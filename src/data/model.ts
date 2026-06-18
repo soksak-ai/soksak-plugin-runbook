@@ -157,13 +157,34 @@ function pickOptional(p: Record<string, unknown>): Partial<CommandRecord> {
   return o;
 }
 
-/** 검증 실패 사유(없으면 통과). command.add 의 필수·enum 게이트. */
+/** 검증 실패 사유(없으면 통과). command.add 의 필수·enum 게이트. 실행 대상은 타입별로 다르다 —
+ *  api=url, 그 외=command(템플릿). */
 export function validateCommandInput(p: Record<string, unknown>): string | null {
   if (typeof p.label !== "string" || p.label.trim() === "") return "label 필요";
-  if (typeof p.command !== "string") return "command(템플릿) 필요";
   if (!isOneOf(EXECUTION_TYPES, p.executionType))
     return `executionType 영문키 필요(${EXECUTION_TYPES.join("|")})`;
+  if (p.executionType === "api") {
+    if (typeof p.url !== "string" || p.url.trim() === "") return "api 는 url 필요";
+  } else {
+    if (typeof p.command !== "string" || p.command.trim() === "")
+      return "command(템플릿) 필요";
+  }
   return null;
+}
+
+/** 한 command 의 Reference 보유 텍스트 — closure 스캔·secret 게이트·refs 메타 추출이 본다(단일 진실 R8).
+ *  api 는 url/headers/query/body, 그 외는 command 필드. 참조가 어느 필드에 있든 누락 없이 잡는다
+ *  (레거시의 필드별 분리 정규식 제거). */
+export function commandRefText(rec: CommandRecord): string {
+  if (rec.executionType === "api") {
+    return [
+      typeof rec.url === "string" ? rec.url : "",
+      ...Object.values(rec.headers ?? {}),
+      ...Object.values(rec.queryParams ?? {}),
+      typeof rec.bodyData === "string" ? rec.bodyData : "",
+    ].join("\n");
+  }
+  return rec.command;
 }
 
 /** 신규 command 레코드 생성(검증은 호출 전 validateCommandInput). refs 는 호출자가 주입(parse 결과). */
@@ -173,7 +194,8 @@ export function makeCommand(
 ): CommandRecord {
   return {
     label: String(p.label),
-    command: String(p.command),
+    // api 는 command 가 비어도 된다(실행 대상은 url) — 문자열 아니면 빈 문자열.
+    command: typeof p.command === "string" ? p.command : "",
     executionType: p.executionType as ExecutionType,
     groupId: opts.groupId,
     favorite: p.favorite === true,

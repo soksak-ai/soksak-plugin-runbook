@@ -47,6 +47,18 @@ interface ProcessApi {
   kill: (handle: number) => Promise<void>;
 }
 
+interface NetworkApi {
+  http: (req: {
+    method: string;
+    url: string;
+    headers?: Record<string, string>;
+    query?: Record<string, string>;
+    body?: string;
+    contentType?: string;
+    secretSubst?: Record<string, string>;
+  }) => Promise<{ status: number; headers: Record<string, string>; body: string }>;
+}
+
 interface ViewProvider {
   mount: (container: HTMLElement, ctx: unknown) => void;
   unmount?: (container: HTMLElement) => void;
@@ -68,6 +80,7 @@ interface PluginContext {
     data?: DataApi;
     commands?: CommandsApi;
     process?: ProcessApi;
+    network?: NetworkApi;
     ui?: UiApi;
     secrets?: SecretsApi;
   };
@@ -123,6 +136,8 @@ export default {
       secretNs: app.pluginId,
       // 셸 실행 전 가용성 게이트(SECRET_PENDING) — app.secrets.has(평문 0, ns 자동주입).
       secrets: app.secrets,
+      // api 실행타입 HTTP 표면(app.network.http — ns 자동주입, 시크릿 Rust 경계 치환).
+      network: app.network,
     });
 
     // ── Reference 엔진 검증 노출(엔진 자체 단언용 — parse/resolve 순수 코어). ──

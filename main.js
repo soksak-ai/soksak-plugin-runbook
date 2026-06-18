@@ -85,15 +85,32 @@ function pickOptional(p) {
 }
 function validateCommandInput(p) {
   if (typeof p.label !== "string" || p.label.trim() === "") return "label \uD544\uC694";
-  if (typeof p.command !== "string") return "command(\uD15C\uD50C\uB9BF) \uD544\uC694";
   if (!isOneOf(EXECUTION_TYPES, p.executionType))
     return `executionType \uC601\uBB38\uD0A4 \uD544\uC694(${EXECUTION_TYPES.join("|")})`;
+  if (p.executionType === "api") {
+    if (typeof p.url !== "string" || p.url.trim() === "") return "api \uB294 url \uD544\uC694";
+  } else {
+    if (typeof p.command !== "string" || p.command.trim() === "")
+      return "command(\uD15C\uD50C\uB9BF) \uD544\uC694";
+  }
   return null;
+}
+function commandRefText(rec) {
+  if (rec.executionType === "api") {
+    return [
+      typeof rec.url === "string" ? rec.url : "",
+      ...Object.values(rec.headers ?? {}),
+      ...Object.values(rec.queryParams ?? {}),
+      typeof rec.bodyData === "string" ? rec.bodyData : ""
+    ].join("\n");
+  }
+  return rec.command;
 }
 function makeCommand(p, opts) {
   return {
     label: String(p.label),
-    command: String(p.command),
+    // api 는 command 가 비어도 된다(실행 대상은 url) — 문자열 아니면 빈 문자열.
+    command: typeof p.command === "string" ? p.command : "",
     executionType: p.executionType,
     groupId: opts.groupId,
     favorite: p.favorite === true,
@@ -547,12 +564,107 @@ function resolveTemplate(template, ctx) {
     handles: r.handles
   };
 }
+function applySecretSubst(handles) {
+  const subst = {};
+  for (const h of handles) subst[`\0secret:${h.key}\0`] = h.key;
+  return subst;
+}
+function bodyContentType(bodyType) {
+  switch (bodyType) {
+    case "json":
+      return "application/json";
+    case "form":
+      return "application/x-www-form-urlencoded";
+    default:
+      return void 0;
+  }
+}
+async function executeNode(deps, rec, ctx, isRoot) {
+  const type = rec.executionType;
+  if (type === "script" || type === "background") {
+    const proc = deps.process;
+    if (!proc) return { ok: false, code: "NO_RUNTIME", message: "process \uD45C\uBA74 \uC5C6\uC74C \u2014 \uC178 \uC2E4\uD589 \uBD88\uAC00" };
+    const { text, unresolved, handles } = resolveTemplate(rec.command, ctx);
+    if (unresolved.length > 0) return { ok: false, code: "UNRESOLVED", unresolved };
+    const sub = applySecretEnv(text, handles);
+    try {
+      const r = await runShell(proc, sub.text, { secretEnv: sub.secretEnv });
+      return { ok: true, stdout: r.stdout, output: r.output, exitCode: r.exitCode };
+    } catch (e) {
+      return { ok: false, code: "EXEC_ERROR", message: e instanceof Error ? e.message : String(e) };
+    }
+  }
+  if (type === "api") {
+    const net = deps.network;
+    if (!net) return { ok: false, code: "NO_RUNTIME", message: "network \uD45C\uBA74 \uC5C6\uC74C \u2014 HTTP \uC2E4\uD589 \uBD88\uAC00" };
+    if (rec.bodyType === "multipart") {
+      return { ok: false, code: "NO_RUNTIME", message: "multipart(\uD30C\uC77C \uC5C5\uB85C\uB4DC)\uB294 \uD6C4\uC18D \u2014 none/json/form \uC9C0\uC6D0" };
+    }
+    const unresolved = [];
+    const handles = [];
+    const resolveF = (t) => {
+      if (!t) return "";
+      const r = resolveTemplate(t, ctx);
+      if (r.unresolved.length > 0) unresolved.push(...r.unresolved);
+      handles.push(...r.handles);
+      return r.text;
+    };
+    const url = resolveF(rec.url);
+    const headers = {};
+    for (const [k, v] of Object.entries(rec.headers ?? {})) headers[k] = resolveF(v);
+    const query = {};
+    for (const [k, v] of Object.entries(rec.queryParams ?? {})) query[k] = resolveF(v);
+    const body = rec.bodyData ? resolveF(rec.bodyData) : void 0;
+    if (unresolved.length > 0) return { ok: false, code: "UNRESOLVED", unresolved };
+    const secretSubst = applySecretSubst(handles);
+    try {
+      const resp = await net.http({
+        method: rec.httpMethod ?? "GET",
+        url,
+        headers,
+        query,
+        body,
+        contentType: bodyContentType(rec.bodyType),
+        secretSubst: Object.keys(secretSubst).length > 0 ? secretSubst : void 0
+      });
+      return {
+        ok: true,
+        stdout: resp.body,
+        output: `[${resp.status}] ${resp.body}`,
+        exitCode: resp.status >= 400 ? 1 : 0,
+        statusCode: resp.status
+      };
+    } catch (e) {
+      return { ok: false, code: "EXEC_ERROR", message: e instanceof Error ? e.message : String(e) };
+    }
+  }
+  if (type === "terminal") {
+    if (!isRoot) {
+      return { ok: false, code: "EXEC_ERROR", message: "terminal \uC740 \uB9C1\uD0B9 \uCC38\uC870 \uB300\uC0C1 \uBD88\uAC00(\uCD9C\uB825 \uCEA1\uCC98 \uC5C6\uC74C)" };
+    }
+    const cmds = deps.commands;
+    if (!cmds) return { ok: false, code: "NO_RUNTIME", message: "commands \uD45C\uBA74 \uC5C6\uC74C \u2014 \uD130\uBBF8\uB110 \uC2E4\uD589 \uBD88\uAC00" };
+    const { text, unresolved, handles } = resolveTemplate(rec.command, ctx);
+    if (unresolved.length > 0) return { ok: false, code: "UNRESOLVED", unresolved };
+    const sub = applySecretEnv(text, handles);
+    const r = await cmds.execute("term.exec", { cmd: sub.text });
+    if (!r.ok) {
+      return { ok: false, code: "EXEC_ERROR", message: r.message ?? `term.exec \uC2E4\uD328: ${r.code ?? ""}` };
+    }
+    return { ok: true, stdout: "", output: `\uD130\uBBF8\uB110 \uC2E4\uD589: ${sub.text}`, exitCode: 0 };
+  }
+  return {
+    ok: false,
+    code: "NO_RUNTIME",
+    message: `\uC2E4\uD589\uD0C0\uC785 ${type} \uC740 \uD6C4\uC18D \uBC94\uC704(schedule = \uB9C8\uC77C\uC2A4\uD1A4 B).`
+  };
+}
 async function runCommand(deps, input) {
   const { data } = deps;
   const scope = input.scope;
   const root = await data.get(COMMANDS, input.commandId, { scope });
   if (!root) return { ok: false, code: "TARGET_NOT_FOUND", message: "\uBA85\uB839 \uC5C6\uC74C" };
-  const templates = /* @__PURE__ */ new Map([[input.commandId, root.command]]);
+  const templates = /* @__PURE__ */ new Map([[input.commandId, commandRefText(root)]]);
   const records = /* @__PURE__ */ new Map([[input.commandId, root]]);
   const seen = /* @__PURE__ */ new Set([input.commandId]);
   const queue = [input.commandId];
@@ -565,12 +677,12 @@ async function runCommand(deps, input) {
       seen.add(r.key);
       const rec = await data.get(COMMANDS, r.key, { scope });
       if (!rec) continue;
-      templates.set(r.key, rec.command);
+      templates.set(r.key, commandRefText(rec));
       records.set(r.key, rec);
       queue.push(r.key);
     }
   }
-  const linked = planLink(input.commandId, root.command, (id) => templates.get(id) ?? null);
+  const linked = planLink(input.commandId, commandRefText(root), (id) => templates.get(id) ?? null);
   if (!linked.ok) return { ok: false, code: "CYCLE", cycle: linked.cycle };
   const plan = linked.plan;
   const type = root.executionType;
@@ -585,7 +697,7 @@ async function runCommand(deps, input) {
       }
     }
   }
-  if ((type === "script" || type === "background") && input.secretNs) {
+  if ((type === "script" || type === "background" || type === "api") && input.secretNs) {
     const secretKeys = /* @__PURE__ */ new Set();
     for (const tmpl of templates.values()) {
       for (const r of parse(tmpl).refs) {
@@ -627,62 +739,25 @@ async function runCommand(deps, input) {
     command: commandCtx,
     secretNs: input.secretNs
   });
-  const proc = deps.process;
   for (const id of plan.order) {
     if (id === input.commandId) continue;
-    const tmpl = templates.get(id);
-    if (tmpl == null) continue;
-    const { text, unresolved, handles } = resolveTemplate(tmpl, baseCtx());
-    if (unresolved.length > 0) {
-      return { ok: false, code: "UNRESOLVED", unresolved };
-    }
-    if (!proc) {
-      return { ok: false, code: "NO_RUNTIME", message: "process \uAD8C\uD55C/\uD45C\uBA74 \uC5C6\uC74C \u2014 \uC178 \uC2E4\uD589 \uBD88\uAC00" };
-    }
-    const sub = applySecretEnv(text, handles);
-    let out;
-    try {
-      const r = await runShell(proc, sub.text, { secretEnv: sub.secretEnv });
-      out = r.stdout;
-    } catch (e) {
-      return { ok: false, code: "EXEC_ERROR", message: e instanceof Error ? e.message : String(e) };
-    }
-    commandCtx[id] = coerceOutput(out);
+    const rec = records.get(id);
+    if (rec == null) continue;
+    const r = await executeNode(deps, rec, baseCtx(), false);
+    if (!r.ok) return r;
+    commandCtx[id] = coerceOutput(r.stdout);
   }
-  const rootResolved = resolveTemplate(root.command, baseCtx());
-  if (rootResolved.unresolved.length > 0) {
-    return { ok: false, code: "UNRESOLVED", unresolved: rootResolved.unresolved };
-  }
-  const rootSub = applySecretEnv(rootResolved.text, rootResolved.handles);
-  const finalCmd = rootSub.text;
-  const rootSecretEnv = rootSub.secretEnv;
-  if (type === "terminal") {
-    const cmds = deps.commands;
-    if (!cmds) return { ok: false, code: "NO_RUNTIME", message: "commands \uD45C\uBA74 \uC5C6\uC74C \u2014 \uD130\uBBF8\uB110 \uC2E4\uD589 \uBD88\uAC00" };
-    const r = await cmds.execute("term.exec", { cmd: finalCmd });
-    if (!r.ok) {
-      return { ok: false, code: "EXEC_ERROR", message: r.message ?? `term.exec \uC2E4\uD328: ${r.code ?? ""}` };
-    }
-    const output = `\uD130\uBBF8\uB110 \uC2E4\uD589: ${finalCmd}`;
-    const historyId2 = await record(data, root, type, output, void 0, scope);
-    return { ok: true, output, exitCode: 0, historyId: historyId2 };
-  }
-  if (type !== "script" && type !== "background") {
-    return {
-      ok: false,
-      code: "NO_RUNTIME",
-      message: `\uC2E4\uD589\uD0C0\uC785 ${type} \uC740 \uD6C4\uC18D \uBC94\uC704(\uC774\uBC88: script\xB7background\xB7terminal).`
-    };
-  }
-  if (!proc) return { ok: false, code: "NO_RUNTIME", message: "process \uAD8C\uD55C/\uD45C\uBA74 \uC5C6\uC74C \u2014 \uC178 \uC2E4\uD589 \uBD88\uAC00" };
-  let shell;
-  try {
-    shell = await runShell(proc, finalCmd, { secretEnv: rootSecretEnv });
-  } catch (e) {
-    return { ok: false, code: "EXEC_ERROR", message: e instanceof Error ? e.message : String(e) };
-  }
-  const historyId = await record(data, root, type, shell.output, shell.exitCode, scope);
-  return { ok: true, output: shell.output, exitCode: shell.exitCode, historyId };
+  const rootResult = await executeNode(deps, root, baseCtx(), true);
+  if (!rootResult.ok) return rootResult;
+  const statusForRecord = rootResult.statusCode ?? rootResult.exitCode;
+  const historyId = await record(data, root, type, rootResult.output, statusForRecord, scope);
+  return {
+    ok: true,
+    output: rootResult.output,
+    exitCode: rootResult.exitCode,
+    historyId,
+    ...rootResult.statusCode !== void 0 ? { statusCode: rootResult.statusCode } : {}
+  };
 }
 function coerceOutput(out) {
   const t = out.trim();
@@ -725,24 +800,32 @@ function registerCommands(data, cmds, sub, runtime = {}) {
     description: "\uB7F0\uBD81 \uBA85\uB839 \uCD94\uAC00. label\xB7command(\uD15C\uD50C\uB9BF)\xB7executionType(terminal|script|background|schedule|api) \uD544\uC218. groupId \uC0DD\uB7B5 \uC2DC \uAE30\uBCF8 \uADF8\uB8F9. command \uD15C\uD50C\uB9BF\uC758 Reference \uBA54\uD0C0\uB294 parse \uB85C \uCD94\uCD9C\xB7\uC800\uC7A5(\uAC80\uC99D\uC6A9).",
     params: {
       label: { type: "string", required: true },
-      command: { type: "string", required: true, description: "\uC2E4\uD589 \uD15C\uD50C\uB9BF(Reference \uD1A0\uD070 \uD3EC\uD568 \uAC00\uB2A5)" },
+      command: { type: "string", description: "\uC2E4\uD589 \uD15C\uD50C\uB9BF(\uC178 \uD0C0\uC785 \u2014 Reference \uD1A0\uD070 \uAC00\uB2A5). api \uB294 url \uC0AC\uC6A9" },
       executionType: { type: "string", required: true },
       groupId: { type: "string", description: "\uC0DD\uB7B5 \uC2DC \uAE30\uBCF8 \uADF8\uB8F9" },
       favorite: { type: "boolean" },
+      url: { type: "string", description: "api: \uC694\uCCAD URL(Reference \uD1A0\uD070 \uAC00\uB2A5)" },
+      httpMethod: { type: "string", description: "api: GET|POST|PUT|DELETE|PATCH(\uC0DD\uB7B5 GET)" },
+      headers: { type: "object", description: "api: \uC694\uCCAD \uD5E4\uB354 \uB9F5(\uAC12\uC5D0 Reference\xB7\uC2DC\uD06C\uB9BF \uD1A0\uD070 \uAC00\uB2A5)" },
+      queryParams: { type: "object", description: "api: \uCFFC\uB9AC \uD30C\uB77C\uBBF8\uD130 \uB9F5" },
+      bodyType: { type: "string", description: "api: none|json|form(multipart \uD6C4\uC18D)" },
+      bodyData: { type: "string", description: "api: \uC694\uCCAD \uBC14\uB514(Reference \uD1A0\uD070 \uAC00\uB2A5)" },
       scope: { type: "string", description: "\uD504\uB85C\uC81D\uD2B8 \uD30C\uD2F0\uC158(\uC0DD\uB7B5=\uC804\uC5ED)" }
     },
     returns: "{ commandId, refs }",
     examples: [
-      `sok plugin.soksak-plugin-runbook.runbook.command.add '{"label":"\uBC30\uD3EC","command":"make deploy {env:dev|prod}","executionType":"script"}'`
+      `sok plugin.soksak-plugin-runbook.runbook.command.add '{"label":"\uBC30\uD3EC","command":"make deploy {env:dev|prod}","executionType":"script"}'`,
+      `sok plugin.soksak-plugin-runbook.runbook.command.add '{"label":"\uD551","executionType":"api","httpMethod":"GET","url":"https://api.example.com/v1/ping"}'`
     ],
     handler: async (p) => {
       const invalid = validateCommandInput(p);
       if (invalid) return err("INVALID_PARAMS", invalid);
       const scope = scopeOf(p);
       const groupId = typeof p.groupId === "string" && p.groupId ? p.groupId : await ensureDefaultGroup(data, scope);
-      const refs = extractRefs(String(p.command));
       const order = await nextCommandOrder(data, scope);
-      const rec = makeCommand(p, { groupId, order, refs });
+      const rec = makeCommand(p, { groupId, order });
+      const refs = extractRefs(commandRefText(rec));
+      if (refs.length > 0) rec.refs = refs;
       const commandId = await data.put(COMMANDS, rec, { scope });
       return ok({ commandId, refs });
     }
@@ -768,7 +851,7 @@ function registerCommands(data, cmds, sub, runtime = {}) {
         scope: scopeOf(p)
       });
       if (!rec) return err("TARGET_NOT_FOUND", "\uBA85\uB839 \uC5C6\uC74C");
-      return ok({ refs: extractRefs(rec.command) });
+      return ok({ refs: extractRefs(commandRefText(rec)) });
     }
   });
   reg("runbook.command.update", {
@@ -780,6 +863,12 @@ function registerCommands(data, cmds, sub, runtime = {}) {
       executionType: { type: "string" },
       favorite: { type: "boolean" },
       groupId: { type: "string" },
+      url: { type: "string", description: "api: \uC694\uCCAD URL" },
+      httpMethod: { type: "string", description: "api: GET|POST|PUT|DELETE|PATCH" },
+      headers: { type: "object", description: "api: \uC694\uCCAD \uD5E4\uB354 \uB9F5" },
+      queryParams: { type: "object", description: "api: \uCFFC\uB9AC \uD30C\uB77C\uBBF8\uD130 \uB9F5" },
+      bodyType: { type: "string", description: "api: none|json|form" },
+      bodyData: { type: "string", description: "api: \uC694\uCCAD \uBC14\uB514" },
       scope: { type: "string" }
     },
     returns: "{ commandId, refs }",
@@ -790,10 +879,11 @@ function registerCommands(data, cmds, sub, runtime = {}) {
         scope
       });
       if (!rec) return err("TARGET_NOT_FOUND", "\uBA85\uB839 \uC5C6\uC74C");
-      const refs = typeof p.command === "string" ? extractRefs(p.command) : rec.refs;
-      const next = mergeCommand(rec, p, refs);
+      const next = mergeCommand(rec, p);
+      const refs = extractRefs(commandRefText(next));
+      next.refs = refs;
       await data.put(COMMANDS, next, { scope, id: p.commandId });
-      return ok({ commandId: p.commandId, refs: next.refs ?? [] });
+      return ok({ commandId: p.commandId, refs });
     }
   });
   reg("runbook.command.delete", {
@@ -943,7 +1033,13 @@ function registerCommands(data, cmds, sub, runtime = {}) {
       const inputs = p.inputs && typeof p.inputs === "object" && !Array.isArray(p.inputs) ? p.inputs : void 0;
       const env = p.env && typeof p.env === "object" && !Array.isArray(p.env) ? p.env : void 0;
       const result = await runCommand(
-        { data, process: runtime.process, commands: runtime.execute, secrets: runtime.secrets },
+        {
+          data,
+          process: runtime.process,
+          commands: runtime.execute,
+          secrets: runtime.secrets,
+          network: runtime.network
+        },
         { commandId: p.commandId, scope: scopeOf(p), inputs, env, secretNs: runtime.secretNs }
       );
       return result;
@@ -2015,7 +2111,9 @@ var index_default = {
       // secret 참조 해소 ns = 이 플러그인 id(평문 아님 — 핸들 ns). secretEnv 주입은 Rust 경계.
       secretNs: app.pluginId,
       // 셸 실행 전 가용성 게이트(SECRET_PENDING) — app.secrets.has(평문 0, ns 자동주입).
-      secrets: app.secrets
+      secrets: app.secrets,
+      // api 실행타입 HTTP 표면(app.network.http — ns 자동주입, 시크릿 Rust 경계 치환).
+      network: app.network
     });
     sub(
       cmds.register("ref.parse", {
