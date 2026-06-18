@@ -585,6 +585,41 @@ async function runCommand(deps, input) {
       }
     }
   }
+  if ((type === "script" || type === "background") && input.secretNs) {
+    const secretKeys = /* @__PURE__ */ new Set();
+    for (const tmpl of templates.values()) {
+      for (const r of parse(tmpl).refs) {
+        if (r.provider === "secret") secretKeys.add(r.key);
+      }
+    }
+    if (secretKeys.size > 0) {
+      const probe = deps.secrets;
+      if (!probe) {
+        return {
+          ok: false,
+          code: "SECRET_PENDING",
+          message: `secret \uCC38\uC870(${[...secretKeys].join(", ")}) \u2014 secrets \uD45C\uBA74 \uC5C6\uC74C(\uAD8C\uD55C/\uC5B8\uB77D \uD544\uC694).`
+        };
+      }
+      const pending = [];
+      for (const key of secretKeys) {
+        let present = false;
+        try {
+          present = await probe.has(key);
+        } catch {
+          present = false;
+        }
+        if (!present) pending.push(key);
+      }
+      if (pending.length > 0) {
+        return {
+          ok: false,
+          code: "SECRET_PENDING",
+          message: `secret \uBBF8\uAC00\uC6A9: ${pending.join(", ")} \u2014 secret.set/secret.unlock \uBA3C\uC800.`
+        };
+      }
+    }
+  }
   const commandCtx = {};
   const baseCtx = () => ({
     param: input.inputs ?? {},
@@ -908,7 +943,7 @@ function registerCommands(data, cmds, sub, runtime = {}) {
       const inputs = p.inputs && typeof p.inputs === "object" && !Array.isArray(p.inputs) ? p.inputs : void 0;
       const env = p.env && typeof p.env === "object" && !Array.isArray(p.env) ? p.env : void 0;
       const result = await runCommand(
-        { data, process: runtime.process, commands: runtime.execute },
+        { data, process: runtime.process, commands: runtime.execute, secrets: runtime.secrets },
         { commandId: p.commandId, scope: scopeOf(p), inputs, env, secretNs: runtime.secretNs }
       );
       return result;
@@ -1978,7 +2013,9 @@ var index_default = {
       process: app.process,
       execute: execFn ? { execute: (name, params) => execFn(name, params) } : void 0,
       // secret 참조 해소 ns = 이 플러그인 id(평문 아님 — 핸들 ns). secretEnv 주입은 Rust 경계.
-      secretNs: app.pluginId
+      secretNs: app.pluginId,
+      // 셸 실행 전 가용성 게이트(SECRET_PENDING) — app.secrets.has(평문 0, ns 자동주입).
+      secrets: app.secrets
     });
     sub(
       cmds.register("ref.parse", {

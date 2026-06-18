@@ -51,10 +51,18 @@ export interface ExecuteApi {
   ) => Promise<{ ok: boolean; code?: string; message?: string; [k: string]: unknown }>;
 }
 
+/** secret 가용성 프로브 — 해당 ns(이 플러그인)에 key 가 실제로 있고 볼트가 언락됐는지(boolean).
+ *  평문 0 — has 는 존재 여부만 반환한다(R2). app.secrets.has 가 그대로 들어온다. 볼트 잠김이면 reject. */
+export interface SecretsProbe {
+  has: (key: string) => Promise<boolean>;
+}
+
 export interface RunDeps {
   data: DataApi;
   process?: ProcessApi;
   commands?: ExecuteApi;
+  /** 미주입(권한 없음) + secret 참조면 SECRET_PENDING. 셸 실행 전 가용성 게이트에만 쓴다. */
+  secrets?: SecretsProbe;
 }
 
 export interface RunInput {
@@ -147,6 +155,47 @@ export async function runCommand(
           ok: false,
           code: "SECRET_PENDING",
           message: "terminal+secret 미지원(ps 노출 위험) — script/background 로 실행하세요.",
+        };
+      }
+    }
+  }
+
+  // 3b. secret 가용성 게이트(script/background) — 자식 env 주입을 시도하기 전에, 참조된 모든 secret 이
+  //     볼트에 실제로 있는지(언락+존재) 확인한다. 하나라도 미가용(미설정 또는 볼트 잠김)이면 SECRET_PENDING —
+  //     "set/unlock 먼저" 를 명시한다(Rust 경계의 미가용 실패를 generic EXEC_ERROR 로 뭉뚱그리지 않음). secretNs
+  //     미설정이면 secret 참조는 resolve 단계에서 UNRESOLVED 로 처리되므로 여기선 건드리지 않는다. has 는 boolean
+  //     만 반환 → 평문 0(R2). 프로브가 throw(볼트 잠김)면 미가용으로 본다.
+  if ((type === "script" || type === "background") && input.secretNs) {
+    const secretKeys = new Set<string>();
+    for (const tmpl of templates.values()) {
+      for (const r of parse(tmpl).refs) {
+        if (r.provider === "secret") secretKeys.add(r.key);
+      }
+    }
+    if (secretKeys.size > 0) {
+      const probe = deps.secrets;
+      if (!probe) {
+        return {
+          ok: false,
+          code: "SECRET_PENDING",
+          message: `secret 참조(${[...secretKeys].join(", ")}) — secrets 표면 없음(권한/언락 필요).`,
+        };
+      }
+      const pending: string[] = [];
+      for (const key of secretKeys) {
+        let present = false;
+        try {
+          present = await probe.has(key);
+        } catch {
+          present = false; // 볼트 잠김 등 — 미가용으로 취급.
+        }
+        if (!present) pending.push(key);
+      }
+      if (pending.length > 0) {
+        return {
+          ok: false,
+          code: "SECRET_PENDING",
+          message: `secret 미가용: ${pending.join(", ")} — secret.set/secret.unlock 먼저.`,
         };
       }
     }

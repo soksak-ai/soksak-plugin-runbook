@@ -5,6 +5,8 @@
 // 합성 scope 로 격리(RUN 마다 새 root) — clear/소프트삭제로 흔적 최소화. RED→GREEN 적대적 검증.
 //
 // 전제: 코어 app(make dev) 실행 중 + 이 플러그인 dev-load 가능. dev 소스 = 동의 면제.
+// secret 실주입 단언(e3)은 볼트 언락이 필요하다 — 사용자 실볼트 비오염을 위해 격리 볼트로 dev 를 기동한다:
+//   SOKSAK_VAULT_PATH=$(mktemp -d)/secrets.vault SOKSAK_VAULT_KEY=<pw> make dev   (오픈 메커니즘, lock-in 0)
 // 사용: SOKSAK_SOCKET=~/.soksak/com.soksak.dev.sock node e2e/runbook-exec.mjs   (repo 루트)
 // 종료코드: 0 = 전부 PASS, 1 = FAIL.
 
@@ -202,17 +204,73 @@ async function main() {
   ok(runU.ok === false && runU.code === "UNRESOLVED", "정의 없는 참조 → UNRESOLVED");
   ok(Array.isArray(runU.unresolved) && runU.unresolved.length === 1, "unresolved 토큰 보고(미치환 토큰 셸 누출 0)");
 
-  // ── (e) secret 토큰 포함 → SECRET_PENDING(평문 미노출 R2, 주입은 후속) ──
-  section("e) secret 게이트(SECRET_PENDING)");
-  const addS = await m("command.add", {
+  // ── (e) secret 게이트 + 실주입(R2 평문 0) — 코어 secret.*(오픈 표면) 로 격리볼트에 set ──
+  section("e) secret 게이트·실주입");
+  const NS = PLUGIN; // secretNs = app.pluginId = 이 플러그인 id.
+
+  // 전제: 볼트 언락(dev = SOKSAK_VAULT_KEY). 미언락이면 e3 가 무의미 — 명시 실패로 재기동을 알린다(스킵 아님).
+  const backend = await rpc("secret.backend", {});
+  ok(
+    backend.unlocked === true,
+    "볼트 언락(미언락이면 SOKSAK_VAULT_PATH+SOKSAK_VAULT_KEY 로 dev 재기동)",
+  );
+
+  // (e1) terminal+secret → SECRET_PENDING — 가용성과 무관히 ps 노출 위험으로 거부.
+  const addT = await m("command.add", {
     scope: SCOPE,
-    label: "S-secret",
-    command: "curl -H 'Authorization: Bearer `secret@apiKey`' https://x",
+    label: "T-secret",
+    command: "deploy `secret@apiKey`",
+    executionType: "terminal",
+  });
+  const runT = await m("command.run", { scope: SCOPE, commandId: addT.commandId });
+  ok(runT.ok === false && runT.code === "SECRET_PENDING", "terminal+secret → SECRET_PENDING(ps 위험)");
+
+  // (e2) script+secret, 미설정 → SECRET_PENDING — 가용성 게이트(set/unlock 먼저).
+  const MISS = `neverSet${RUN}`;
+  const addMiss = await m("command.add", {
+    scope: SCOPE,
+    label: "S-miss",
+    command: "echo `secret@" + MISS + "`",
     executionType: "script",
   });
-  const SREF = addS.commandId;
-  const runS = await m("command.run", { scope: SCOPE, commandId: SREF });
-  ok(runS.ok === false && runS.code === "SECRET_PENDING", "secret 참조 → SECRET_PENDING(명시 거부)");
+  const runMiss = await m("command.run", { scope: SCOPE, commandId: addMiss.commandId });
+  ok(
+    runMiss.ok === false && runMiss.code === "SECRET_PENDING",
+    "script+미설정 secret → SECRET_PENDING(가용성 게이트)",
+  );
+
+  // (e3) script+secret, 설정됨 → 실제 자식 env 주입 + 평문 0(R2). 길이로 실주입을 증명(값 미노출).
+  const KEY = `e2eApiKey${RUN}`;
+  const VALUE = "abcdef0123456789"; // 16바이트 — 주입 증명을 길이로(평문 미출력).
+  const setR = await rpc("secret.set", { ns: NS, key: KEY, value: VALUE });
+  ok(setR.ok === true, "secret.set(격리볼트) ok");
+  const hasR = await rpc("secret.has", { ns: NS, key: KEY });
+  ok(hasR.has === true, "secret.has → true(설정 확인)");
+
+  // printf '%s' "<secret>" | wc -c → 값의 바이트 수만 출력(평문 미노출). 자식 env 주입을 길이로 증명.
+  const addI = await m("command.add", {
+    scope: SCOPE,
+    label: "S-inject",
+    command: "printf '%s' \"`secret@" + KEY + "`\" | wc -c | tr -d ' '",
+    executionType: "script",
+  });
+  const runI = await m("command.run", { scope: SCOPE, commandId: addI.commandId });
+  ok(runI.ok === true, "script+설정 secret → 실행 ok(가용성 게이트 통과·주입)");
+  ok(
+    String(runI.output).trim() === String(VALUE.length),
+    `주입된 값 길이=${VALUE.length}(자식 env 로 실평문 주입 증명)`,
+  );
+  ok(!String(runI.output).includes(VALUE), "출력에 평문 시크릿 0(R2)");
+
+  // 히스토리·명령 레코드도 평문 0 — 출력엔 길이만, 템플릿엔 토큰만.
+  const histI = await m("history.list", { scope: SCOPE });
+  ok(!JSON.stringify(histI).includes(VALUE), "히스토리에 평문 시크릿 0(R2)");
+  const recI = await m("command.get", { scope: SCOPE, commandId: addI.commandId });
+  ok(!JSON.stringify(recI).includes(VALUE), "명령 레코드에 평문 시크릿 0(토큰만)");
+
+  // 테스트 시크릿 정리(격리볼트라도 흔적 0).
+  const delR = await rpc("secret.delete", { ns: NS, key: KEY });
+  ok(delR.removed === true, "secret.delete(테스트 시크릿 정리)");
 
   // ── (f) 없는 commandId → TARGET_NOT_FOUND ──
   section("f) 없는 명령");
