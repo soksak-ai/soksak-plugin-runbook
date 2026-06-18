@@ -25,6 +25,8 @@ import {
   type DataApi,
 } from "../data/store";
 import {
+  armSchedule,
+  cancelSchedule,
   runCommand,
   type ExecuteApi,
   type NetworkApi,
@@ -93,6 +95,10 @@ export function registerCommands(
       queryParams: { type: "object", description: "api: 쿼리 파라미터 맵" },
       bodyType: { type: "string", description: "api: none|json|form(multipart 후속)" },
       bodyData: { type: "string", description: "api: 요청 바디(Reference 토큰 가능)" },
+      scheduleAt: { type: "number", description: "schedule: 첫 발화 시각(epoch ms)" },
+      repeatType: { type: "string", description: "schedule: none|daily|weekly|monthly(생략 none)" },
+      intervalSec: { type: "number", description: "schedule: 주기(초) — repeat 대신 주기 실행, 우선" },
+      reminderSecs: { type: "number[]", description: "schedule: 발화 N초 전 리마인더(notify.show)" },
       scope: { type: "string", description: "프로젝트 파티션(생략=전역)" },
     },
     returns: "{ commandId, refs }",
@@ -160,6 +166,10 @@ export function registerCommands(
       queryParams: { type: "object", description: "api: 쿼리 파라미터 맵" },
       bodyType: { type: "string", description: "api: none|json|form" },
       bodyData: { type: "string", description: "api: 요청 바디" },
+      scheduleAt: { type: "number", description: "schedule: 첫 발화 시각(epoch ms)" },
+      repeatType: { type: "string", description: "schedule: none|daily|weekly|monthly" },
+      intervalSec: { type: "number", description: "schedule: 주기(초)" },
+      reminderSecs: { type: "number[]", description: "schedule: 발화 N초 전 리마인더" },
       scope: { type: "string" },
     },
     returns: "{ commandId, refs }",
@@ -192,6 +202,10 @@ export function registerCommands(
       })) as CommandRecord | null;
       if (!rec) return err("TARGET_NOT_FOUND", "명령 없음");
       await data.put(COMMANDS, { ...rec, deleted: true }, { scope, id: p.commandId });
+      // schedule 이면 코어 등록 취소(휴지통 명령이 발화하지 않게).
+      if (rec.executionType === "schedule") {
+        await cancelSchedule({ execute: runtime.execute?.execute }, rec);
+      }
       return ok({ commandId: p.commandId });
     },
   });
@@ -207,7 +221,12 @@ export function registerCommands(
         scope,
       })) as CommandRecord | null;
       if (!rec) return err("TARGET_NOT_FOUND", "명령 없음");
-      await data.put(COMMANDS, { ...rec, deleted: false }, { scope, id: p.commandId });
+      const restored = { ...rec, deleted: false };
+      await data.put(COMMANDS, restored, { scope, id: p.commandId });
+      // schedule 이면 코어에 재등록(복원 즉시 다시 예약).
+      if (rec.executionType === "schedule") {
+        await armSchedule({ execute: runtime.execute?.execute }, restored, scope, Date.now());
+      }
       return ok({ commandId: p.commandId });
     },
   });
@@ -336,6 +355,13 @@ export function registerCommands(
     ],
     handler: async (p) => {
       if (typeof p.commandId !== "string") return err("INVALID_PARAMS", "commandId 필요");
+      const scope = scopeOf(p);
+      // schedule 타입은 즉시 실행이 아니라 예약(arm) — 코어 스케줄러에 등록한다(발화 시 schedule.fire→action).
+      const rec = (await data.get(COMMANDS, p.commandId, { scope })) as CommandRecord | null;
+      if (!rec) return err("TARGET_NOT_FOUND", "명령 없음");
+      if (rec.executionType === "schedule") {
+        return await armSchedule({ execute: runtime.execute?.execute }, rec, scope, Date.now());
+      }
       const inputs =
         p.inputs && typeof p.inputs === "object" && !Array.isArray(p.inputs)
           ? (p.inputs as Record<string, string>)
@@ -352,10 +378,38 @@ export function registerCommands(
           secrets: runtime.secrets,
           network: runtime.network,
         },
-        { commandId: p.commandId, scope: scopeOf(p), inputs, env, secretNs: runtime.secretNs },
+        { commandId: p.commandId, scope, inputs, env, secretNs: runtime.secretNs },
       );
       // RunResult 는 이미 {ok,...} 형태 — 그대로 반환(code 명시 전파 R4).
       return result;
+    },
+  });
+
+  // ── schedule 발화(fire) — 코어 스케줄러가 due 시각에 호출. 사용자 직접 대상 아님(arm=command.run). ──
+  reg("runbook.schedule.fire", {
+    description:
+      "코어 스케줄러가 due 시각에 호출 — schedule 명령의 action(command 필드, 셸)을 실행하고 다음 occurrence 를 재무장한다(반복/간격). deleted 면 발화·재무장 0. 사용자 직접 호출 대상 아님.",
+    params: { commandId: { type: "string", required: true }, scope: { type: "string" } },
+    returns: "{ ok, output, exitCode, historyId, nextAt? } | { ok:false, code }",
+    handler: async (p) => {
+      if (typeof p.commandId !== "string") return err("INVALID_PARAMS", "commandId 필요");
+      const scope = scopeOf(p);
+      const rec = (await data.get(COMMANDS, p.commandId, { scope })) as CommandRecord | null;
+      if (!rec || rec.deleted) return err("TARGET_NOT_FOUND", "명령 없음/삭제됨");
+      // action 실행(executeNode schedule = 셸). 링킹·시크릿·환경은 일반 경로와 동일.
+      const result = await runCommand(
+        {
+          data,
+          process: runtime.process,
+          commands: runtime.execute,
+          secrets: runtime.secrets,
+          network: runtime.network,
+        },
+        { commandId: p.commandId, scope, secretNs: runtime.secretNs },
+      );
+      // 다음 occurrence 재무장(반복/간격) — 실행 성공 여부와 무관(다음 주기 보장). 단발이면 미재무장.
+      const armed = await armSchedule({ execute: runtime.execute?.execute }, rec, scope, Date.now());
+      return armed.ok && armed.scheduled ? { ...result, nextAt: armed.nextAt } : result;
     },
   });
 

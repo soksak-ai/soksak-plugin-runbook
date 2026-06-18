@@ -581,7 +581,7 @@ function bodyContentType(bodyType) {
 }
 async function executeNode(deps, rec, ctx, isRoot) {
   const type = rec.executionType;
-  if (type === "script" || type === "background") {
+  if (type === "script" || type === "background" || type === "schedule") {
     const proc = deps.process;
     if (!proc) return { ok: false, code: "NO_RUNTIME", message: "process \uD45C\uBA74 \uC5C6\uC74C \u2014 \uC178 \uC2E4\uD589 \uBD88\uAC00" };
     const { text, unresolved, handles } = resolveTemplate(rec.command, ctx);
@@ -697,7 +697,7 @@ async function runCommand(deps, input) {
       }
     }
   }
-  if ((type === "script" || type === "background" || type === "api") && input.secretNs) {
+  if ((type === "script" || type === "background" || type === "api" || type === "schedule") && input.secretNs) {
     const secretKeys = /* @__PURE__ */ new Set();
     for (const tmpl of templates.values()) {
       for (const r of parse(tmpl).refs) {
@@ -790,6 +790,88 @@ async function record(data, root, type, output, exitCode, scope) {
   return data.put(HISTORY, hist, { scope });
 }
 
+// src/exec/schedule.ts
+var DAY_MS = 864e5;
+var WEEK_MS = 6048e5;
+function nextFixed(scheduleAt, stepMs, after) {
+  if (scheduleAt > after) return scheduleAt;
+  const k = Math.floor((after - scheduleAt) / stepMs) + 1;
+  return scheduleAt + k * stepMs;
+}
+function nextMonthly(scheduleAt, after) {
+  if (scheduleAt > after) return scheduleAt;
+  for (let k = 1; k <= 1200; k++) {
+    const d = new Date(scheduleAt);
+    d.setMonth(d.getMonth() + k);
+    const t = d.getTime();
+    if (t > after) return t;
+  }
+  return null;
+}
+function nextOccurrence(scheduleAt, repeat, intervalSec, after) {
+  if (intervalSec && intervalSec > 0) {
+    return nextFixed(scheduleAt, intervalSec * 1e3, after);
+  }
+  switch (repeat) {
+    case "daily":
+      return nextFixed(scheduleAt, DAY_MS, after);
+    case "weekly":
+      return nextFixed(scheduleAt, WEEK_MS, after);
+    case "monthly":
+      return nextMonthly(scheduleAt, after);
+    default:
+      return scheduleAt > after ? scheduleAt : null;
+  }
+}
+
+// src/exec/arm.ts
+var PLUGIN = "soksak-plugin-runbook";
+var FIRE_CMD = `plugin.${PLUGIN}.runbook.schedule.fire`;
+var fireId = (commandId) => `runbook:${commandId}`;
+var reminderId = (commandId, i) => `runbook:${commandId}:r${i}`;
+async function armSchedule(deps, rec, scope, now) {
+  const exec = deps.execute;
+  if (!exec) return { ok: false, code: "NO_RUNTIME", message: "commands \uD45C\uBA74 \uC5C6\uC74C \u2014 schedule \uB4F1\uB85D \uBD88\uAC00" };
+  const commandId = String(rec.id);
+  const at = typeof rec.scheduleAt === "number" ? rec.scheduleAt : 0;
+  const next = nextOccurrence(at, rec.repeatType, rec.intervalSec, now);
+  if (next == null) {
+    await cancelSchedule(deps, rec);
+    return { ok: true, scheduled: false, reason: "\uBC1C\uD654\uD560 \uBBF8\uB798 \uC2DC\uAC01 \uC5C6\uC74C(\uACFC\uAC70 \uB2E8\uBC1C)" };
+  }
+  const set = await exec("schedule.set", {
+    at: next,
+    command: FIRE_CMD,
+    params: { commandId, scope: scope ?? null },
+    id: fireId(commandId)
+  });
+  const scheduleId = set.scheduleId ?? fireId(commandId);
+  const reminders = Array.isArray(rec.reminderSecs) ? rec.reminderSecs : [];
+  for (let i = 0; i < reminders.length; i++) {
+    const remAt = next - reminders[i] * 1e3;
+    if (remAt <= now) continue;
+    await exec("schedule.set", {
+      at: remAt,
+      command: "notify.show",
+      params: { title: `\uACE7 \uC2E4\uD589: ${rec.label}`, body: `${reminders[i]}\uCD08 \uD6C4 \uC608\uC57D \uC2E4\uD589` },
+      id: reminderId(commandId, i)
+    });
+  }
+  return { ok: true, scheduled: true, nextAt: next, scheduleId };
+}
+async function cancelSchedule(deps, rec) {
+  const exec = deps.execute;
+  if (!exec) return;
+  const commandId = String(rec.id);
+  await exec("schedule.cancel", { id: fireId(commandId) }).catch(() => {
+  });
+  const reminders = Array.isArray(rec.reminderSecs) ? rec.reminderSecs : [];
+  for (let i = 0; i < reminders.length; i++) {
+    await exec("schedule.cancel", { id: reminderId(commandId, i) }).catch(() => {
+    });
+  }
+}
+
 // src/commands/runbook.ts
 var ok = (extra) => ({ ok: true, ...extra });
 var err = (code, message) => ({ ok: false, code, message });
@@ -810,6 +892,10 @@ function registerCommands(data, cmds, sub, runtime = {}) {
       queryParams: { type: "object", description: "api: \uCFFC\uB9AC \uD30C\uB77C\uBBF8\uD130 \uB9F5" },
       bodyType: { type: "string", description: "api: none|json|form(multipart \uD6C4\uC18D)" },
       bodyData: { type: "string", description: "api: \uC694\uCCAD \uBC14\uB514(Reference \uD1A0\uD070 \uAC00\uB2A5)" },
+      scheduleAt: { type: "number", description: "schedule: \uCCAB \uBC1C\uD654 \uC2DC\uAC01(epoch ms)" },
+      repeatType: { type: "string", description: "schedule: none|daily|weekly|monthly(\uC0DD\uB7B5 none)" },
+      intervalSec: { type: "number", description: "schedule: \uC8FC\uAE30(\uCD08) \u2014 repeat \uB300\uC2E0 \uC8FC\uAE30 \uC2E4\uD589, \uC6B0\uC120" },
+      reminderSecs: { type: "number[]", description: "schedule: \uBC1C\uD654 N\uCD08 \uC804 \uB9AC\uB9C8\uC778\uB354(notify.show)" },
       scope: { type: "string", description: "\uD504\uB85C\uC81D\uD2B8 \uD30C\uD2F0\uC158(\uC0DD\uB7B5=\uC804\uC5ED)" }
     },
     returns: "{ commandId, refs }",
@@ -869,6 +955,10 @@ function registerCommands(data, cmds, sub, runtime = {}) {
       queryParams: { type: "object", description: "api: \uCFFC\uB9AC \uD30C\uB77C\uBBF8\uD130 \uB9F5" },
       bodyType: { type: "string", description: "api: none|json|form" },
       bodyData: { type: "string", description: "api: \uC694\uCCAD \uBC14\uB514" },
+      scheduleAt: { type: "number", description: "schedule: \uCCAB \uBC1C\uD654 \uC2DC\uAC01(epoch ms)" },
+      repeatType: { type: "string", description: "schedule: none|daily|weekly|monthly" },
+      intervalSec: { type: "number", description: "schedule: \uC8FC\uAE30(\uCD08)" },
+      reminderSecs: { type: "number[]", description: "schedule: \uBC1C\uD654 N\uCD08 \uC804 \uB9AC\uB9C8\uC778\uB354" },
       scope: { type: "string" }
     },
     returns: "{ commandId, refs }",
@@ -898,6 +988,9 @@ function registerCommands(data, cmds, sub, runtime = {}) {
       });
       if (!rec) return err("TARGET_NOT_FOUND", "\uBA85\uB839 \uC5C6\uC74C");
       await data.put(COMMANDS, { ...rec, deleted: true }, { scope, id: p.commandId });
+      if (rec.executionType === "schedule") {
+        await cancelSchedule({ execute: runtime.execute?.execute }, rec);
+      }
       return ok({ commandId: p.commandId });
     }
   });
@@ -912,7 +1005,11 @@ function registerCommands(data, cmds, sub, runtime = {}) {
         scope
       });
       if (!rec) return err("TARGET_NOT_FOUND", "\uBA85\uB839 \uC5C6\uC74C");
-      await data.put(COMMANDS, { ...rec, deleted: false }, { scope, id: p.commandId });
+      const restored = { ...rec, deleted: false };
+      await data.put(COMMANDS, restored, { scope, id: p.commandId });
+      if (rec.executionType === "schedule") {
+        await armSchedule({ execute: runtime.execute?.execute }, restored, scope, Date.now());
+      }
       return ok({ commandId: p.commandId });
     }
   });
@@ -1030,6 +1127,12 @@ function registerCommands(data, cmds, sub, runtime = {}) {
     ],
     handler: async (p) => {
       if (typeof p.commandId !== "string") return err("INVALID_PARAMS", "commandId \uD544\uC694");
+      const scope = scopeOf(p);
+      const rec = await data.get(COMMANDS, p.commandId, { scope });
+      if (!rec) return err("TARGET_NOT_FOUND", "\uBA85\uB839 \uC5C6\uC74C");
+      if (rec.executionType === "schedule") {
+        return await armSchedule({ execute: runtime.execute?.execute }, rec, scope, Date.now());
+      }
       const inputs = p.inputs && typeof p.inputs === "object" && !Array.isArray(p.inputs) ? p.inputs : void 0;
       const env = p.env && typeof p.env === "object" && !Array.isArray(p.env) ? p.env : void 0;
       const result = await runCommand(
@@ -1040,9 +1143,32 @@ function registerCommands(data, cmds, sub, runtime = {}) {
           secrets: runtime.secrets,
           network: runtime.network
         },
-        { commandId: p.commandId, scope: scopeOf(p), inputs, env, secretNs: runtime.secretNs }
+        { commandId: p.commandId, scope, inputs, env, secretNs: runtime.secretNs }
       );
       return result;
+    }
+  });
+  reg("runbook.schedule.fire", {
+    description: "\uCF54\uC5B4 \uC2A4\uCF00\uC904\uB7EC\uAC00 due \uC2DC\uAC01\uC5D0 \uD638\uCD9C \u2014 schedule \uBA85\uB839\uC758 action(command \uD544\uB4DC, \uC178)\uC744 \uC2E4\uD589\uD558\uACE0 \uB2E4\uC74C occurrence \uB97C \uC7AC\uBB34\uC7A5\uD55C\uB2E4(\uBC18\uBCF5/\uAC04\uACA9). deleted \uBA74 \uBC1C\uD654\xB7\uC7AC\uBB34\uC7A5 0. \uC0AC\uC6A9\uC790 \uC9C1\uC811 \uD638\uCD9C \uB300\uC0C1 \uC544\uB2D8.",
+    params: { commandId: { type: "string", required: true }, scope: { type: "string" } },
+    returns: "{ ok, output, exitCode, historyId, nextAt? } | { ok:false, code }",
+    handler: async (p) => {
+      if (typeof p.commandId !== "string") return err("INVALID_PARAMS", "commandId \uD544\uC694");
+      const scope = scopeOf(p);
+      const rec = await data.get(COMMANDS, p.commandId, { scope });
+      if (!rec || rec.deleted) return err("TARGET_NOT_FOUND", "\uBA85\uB839 \uC5C6\uC74C/\uC0AD\uC81C\uB428");
+      const result = await runCommand(
+        {
+          data,
+          process: runtime.process,
+          commands: runtime.execute,
+          secrets: runtime.secrets,
+          network: runtime.network
+        },
+        { commandId: p.commandId, scope, secretNs: runtime.secretNs }
+      );
+      const armed = await armSchedule({ execute: runtime.execute?.execute }, rec, scope, Date.now());
+      return armed.ok && armed.scheduled ? { ...result, nextAt: armed.nextAt } : result;
     }
   });
   reg("runbook.group.add", {
@@ -2115,6 +2241,19 @@ var index_default = {
       // api 실행타입 HTTP 표면(app.network.http — ns 자동주입, 시크릿 Rust 경계 치환).
       network: app.network
     });
+    if (execFn) {
+      void (async () => {
+        try {
+          const rows = await data.query(COMMANDS, {
+            where: { executionType: "schedule", deleted: false }
+          });
+          for (const recRow of rows) {
+            await armSchedule({ execute: (n, pp) => execFn(n, pp) }, recRow, void 0, Date.now());
+          }
+        } catch {
+        }
+      })();
+    }
     sub(
       cmds.register("ref.parse", {
         description: "Reference \uD15C\uD50C\uB9BF\uC744 \uD30C\uC2F1\uD574 \uB178\uB4DC\uC640 \uCD94\uCD9C\uB41C Reference \uBAA9\uB85D\uC744 \uBC18\uD658(\uC5D4\uC9C4 \uAC80\uC99D).",
