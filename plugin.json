@@ -1,0 +1,26 @@
+{
+  "spec": "soksak-plugin-spec@1",
+  "id": "soksak-plugin-runbook",
+  "name": { "ko": "런북", "en": "Runbook" },
+  "version": "0.1.0",
+  "repo": "https://github.com/soksak-ai/soksak-plugin-runbook.git",
+  "description": "재사용 가능한 작업(런북)을 저장하고 실행한다. 작업은 파라미터·환경변수·시크릿·다른 작업 출력을 Reference 로 엮으며, 링킹은 순수 해석 + 의존 그래프 + 순환 검출로 안전하게 풀린다.",
+  "entry": "main.js",
+  "permissions": [
+    "data",
+    "commands",
+    "ui",
+    "process",
+    "network",
+    "notify",
+    "programs",
+    "clipboard:read",
+    "secrets"
+  ],
+  "contributes": {
+    "commands": [
+      { "name": "ref.parse", "title": "Reference 파싱(엔진 검증)" },
+      { "name": "ref.resolve", "title": "Reference 해석(엔진 검증)" }
+    ]
+  }
+}
