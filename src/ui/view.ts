@@ -44,6 +44,11 @@ const CSS = [
   ".rb-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}",
   ".rb-meta{font-size:10.5px;color:var(--fg3);margin-top:1px;display:flex;gap:5px;align-items:center;}",
   ".rb-exec{font-size:9.5px;padding:1px 5px;border-radius:8px;border:1px solid var(--bd-soft);color:var(--fg2);}",
+  // 실행타입별 색(배지와 같은 색 언어) — script=청록, terminal=청, background=중립, schedule=보라, api=시안.
+  ".rb-exec-script{color:color-mix(in srgb,#46d3a3 82%,var(--fg));border-color:color-mix(in srgb,#46d3a3 40%,transparent);}",
+  ".rb-exec-terminal{color:color-mix(in srgb,#6aa8ff 82%,var(--fg));border-color:color-mix(in srgb,#6aa8ff 40%,transparent);}",
+  ".rb-exec-schedule{color:color-mix(in srgb,#c08cff 82%,var(--fg));border-color:color-mix(in srgb,#c08cff 40%,transparent);}",
+  ".rb-exec-api{color:color-mix(in srgb,#52cfe6 82%,var(--fg));border-color:color-mix(in srgb,#52cfe6 40%,transparent);}",
   ".rb-btn{flex:none;border:0;background:none;padding:2px 5px;border-radius:4px;color:var(--fg3);cursor:pointer;}",
   ".rb-btn:hover{color:var(--fg);background:var(--bd);}",
   ".rb-btn.fav.on{color:var(--acc);}",
@@ -63,9 +68,20 @@ const CSS = [
   ".rb-editor{box-sizing:border-box;min-height:34px;padding:6px 8px;border-radius:6px;border:1px solid var(--bd-soft);background:var(--bg);color:var(--fg);font-size:12px;line-height:1.7;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap;word-break:break-word;outline:none;}",
   ".rb-editor:focus{border-color:var(--acc);}",
   ".rb-editor:empty::before{content:attr(data-ph);color:var(--fg3);}",
-  ".rb-badge{display:inline;padding:1px 6px;margin:0 1px;border-radius:5px;font-size:11px;white-space:nowrap;border:1px solid color-mix(in srgb,var(--acc) 35%,transparent);background:color-mix(in srgb,var(--acc) 14%,var(--bg));color:var(--fg);cursor:default;user-select:all;}",
-  ".rb-badge.secret{border-color:color-mix(in srgb,var(--acc) 20%,var(--fg3));background:color-mix(in srgb,var(--fg) 10%,var(--bg));}",
+  ".rb-badge{display:inline;padding:1px 7px;margin:0 1px;border-radius:5px;font-size:11px;font-weight:500;white-space:nowrap;border:1px solid color-mix(in srgb,var(--fg3) 50%,transparent);background:color-mix(in srgb,var(--fg) 8%,var(--bg));color:var(--fg2);cursor:default;user-select:all;}",
+  // provider 6색 토큰맵 — 색이 곧 타입(시크릿=호박/민감, command=청/링킹, param=보라, env=청록, var=시안, clipboard=주황).
+  // color-mix 로 테마 적응(라이트=fg 어두워 텍스트 진해지고, 다크=fg 밝아 텍스트 밝아짐).
+  ".rb-badge.secret{color:color-mix(in srgb,#e6b450 80%,var(--fg));border-color:color-mix(in srgb,#e6b450 48%,transparent);background:color-mix(in srgb,#e6b450 17%,var(--bg));}",
+  ".rb-badge.command{color:color-mix(in srgb,#6aa8ff 80%,var(--fg));border-color:color-mix(in srgb,#6aa8ff 48%,transparent);background:color-mix(in srgb,#6aa8ff 17%,var(--bg));}",
+  ".rb-badge.param{color:color-mix(in srgb,#c08cff 80%,var(--fg));border-color:color-mix(in srgb,#c08cff 48%,transparent);background:color-mix(in srgb,#c08cff 17%,var(--bg));}",
+  ".rb-badge.env{color:color-mix(in srgb,#46d3a3 80%,var(--fg));border-color:color-mix(in srgb,#46d3a3 48%,transparent);background:color-mix(in srgb,#46d3a3 17%,var(--bg));}",
+  ".rb-badge.var{color:color-mix(in srgb,#52cfe6 80%,var(--fg));border-color:color-mix(in srgb,#52cfe6 48%,transparent);background:color-mix(in srgb,#52cfe6 17%,var(--bg));}",
+  ".rb-badge.clipboard{color:color-mix(in srgb,#f2945c 80%,var(--fg));border-color:color-mix(in srgb,#f2945c 48%,transparent);background:color-mix(in srgb,#f2945c 17%,var(--bg));}",
   ".rb-badge.selected{outline:2px solid var(--acc);outline-offset:0;}",
+  // 테마 셀렉트 — 네이티브 3D 베벨 제거(appearance:none) + 커스텀 chevron(인라인 SVG).
+  ".rb-select{box-sizing:border-box;appearance:none;-webkit-appearance:none;padding:4px 26px 4px 8px;border-radius:6px;border:1px solid var(--bd-soft);background-color:var(--bg);color:var(--fg);font-size:12px;cursor:pointer;background-image:url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6'><path d='M1 1l4 4 4-4' fill='none' stroke='%23888' stroke-width='1.4' stroke-linecap='round'/></svg>\");background-repeat:no-repeat;background-position:right 9px center;}",
+  ".rb-select:hover{border-color:var(--bd);}",
+  ".rb-select:focus{border-color:var(--acc);outline:none;}",
   // ── 자동완성 드롭다운 ──
   ".rb-suggest{position:absolute;left:8px;right:8px;z-index:20;margin-top:2px;max-height:160px;overflow-y:auto;background:var(--bg);border:1px solid var(--bd);border-radius:6px;box-shadow:0 4px 14px color-mix(in srgb,var(--fg) 18%,transparent);}",
   ".rb-sg-item{padding:4px 8px;font-size:11.5px;color:var(--fg2);cursor:pointer;display:flex;justify-content:space-between;gap:8px;}",
@@ -161,7 +177,7 @@ export function createRunbookView(app: RunbookApi, mounts: Set<MountEntry>) {
       row1.append(searchInput, addBtn);
 
       const groupSel = document.createElement("select");
-      groupSel.className = "rb-group";
+      groupSel.className = "rb-select rb-group";
       groupSel.dataset.node = "group-select";
       head.append(row1, groupSel);
 
@@ -628,7 +644,7 @@ export function createRunbookView(app: RunbookApi, mounts: Set<MountEntry>) {
         // 실행 타입.
         const execField = field("실행 타입", () => {
           const sel = document.createElement("select");
-          sel.className = "rb-input";
+          sel.className = "rb-select";
           sel.dataset.node = "form-exec";
           for (const t of EXEC_TYPES) {
             const o = document.createElement("option");
@@ -729,7 +745,7 @@ export function createRunbookView(app: RunbookApi, mounts: Set<MountEntry>) {
           const meta = document.createElement("div");
           meta.className = "rb-meta";
           const exec = document.createElement("span");
-          exec.className = "rb-exec";
+          exec.className = "rb-exec rb-exec-" + String(c.executionType ?? "");
           exec.textContent = String(c.executionType ?? "");
           meta.append(exec);
           main.append(label, meta);
