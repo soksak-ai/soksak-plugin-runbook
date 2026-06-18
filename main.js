@@ -1522,17 +1522,21 @@ var COMMANDS2 = "commands";
 var GROUPS2 = "groups";
 var CSS = [
   ".rb-root{display:flex;flex-direction:column;height:100%;font-size:12px;color:var(--fg);}",
-  ".rb-head{display:flex;flex-direction:column;gap:6px;padding:6px 8px;border-bottom:1px solid var(--bd-soft);}",
-  ".rb-row1{display:flex;gap:6px;align-items:center;}",
-  ".rb-search{flex:1;box-sizing:border-box;padding:4px 8px;border-radius:6px;border:1px solid var(--bd-soft);background:var(--bg);color:var(--fg);font-size:12px;}",
+  ".rb-head{display:flex;flex-direction:column;gap:8px;padding:10px 10px 9px;border-bottom:1px solid var(--bd-soft);}",
+  ".rb-row1{display:flex;gap:7px;align-items:center;}",
+  ".rb-search{flex:1;box-sizing:border-box;min-height:32px;padding:6px 10px;border-radius:8px;border:1px solid var(--bd-soft);background:color-mix(in srgb,var(--fg) 6%,var(--bg));color:var(--fg);font-size:12px;transition:border-color .12s,box-shadow .12s;}",
   ".rb-search::placeholder{color:var(--fg3);}",
-  ".rb-group{box-sizing:border-box;padding:4px 6px;border-radius:6px;border:1px solid var(--bd-soft);background:var(--bg);color:var(--fg2);font-size:11px;max-width:120px;}",
-  ".rb-add{flex:none;border:1px solid var(--bd-soft);background:var(--bg);color:var(--fg2);border-radius:6px;padding:3px 8px;cursor:pointer;font-size:13px;line-height:1;}",
-  ".rb-add:hover{color:var(--fg);border-color:var(--bd);}",
-  ".rb-list{flex:1;overflow-y:auto;padding:4px;}",
-  ".rb-empty{color:var(--fg2);padding:14px;text-align:center;}",
-  ".rb-item{display:flex;gap:6px;align-items:center;padding:6px;border-radius:6px;}",
-  ".rb-item:hover{background:var(--bg);}",
+  ".rb-search:focus{border-color:var(--acc);outline:none;box-shadow:0 0 0 3px color-mix(in srgb,var(--acc) 20%,transparent);}",
+  ".rb-group{max-width:128px;}",
+  ".rb-add{flex:none;display:flex;align-items:center;justify-content:center;width:32px;height:32px;border:1px solid var(--bd-soft);background:color-mix(in srgb,var(--fg) 6%,var(--bg));color:var(--fg2);border-radius:8px;cursor:pointer;font-size:16px;line-height:1;transition:all .12s;}",
+  ".rb-add:hover{color:var(--acc);border-color:color-mix(in srgb,var(--acc) 55%,var(--bd-soft));}",
+  ".rb-list{flex:1;overflow-y:auto;padding:5px 6px;}",
+  ".rb-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:9px;color:var(--fg2);padding:48px 16px;text-align:center;}",
+  ".rb-empty svg{opacity:.4;}",
+  ".rb-empty-t{font-size:13px;color:var(--fg2);}",
+  ".rb-empty-h{font-size:11px;color:var(--fg3);}",
+  ".rb-item{display:flex;gap:7px;align-items:center;padding:7px 8px;border-radius:8px;transition:background .1s;}",
+  ".rb-item:hover{background:color-mix(in srgb,var(--fg) 6%,var(--bg));}",
   ".rb-main{flex:1;min-width:0;}",
   ".rb-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}",
   ".rb-meta{font-size:10.5px;color:var(--fg3);margin-top:1px;display:flex;gap:5px;align-items:center;}",
@@ -1546,20 +1550,23 @@ var CSS = [
   ".rb-btn:hover{color:var(--fg);background:var(--bd);}",
   ".rb-btn.fav.on{color:var(--acc);}",
   ".rb-btn.run{color:var(--acc);}",
-  // ── 폼 ──
-  ".rb-form{display:flex;flex-direction:column;gap:8px;padding:10px 8px;border-bottom:1px solid var(--bd-soft);}",
-  ".rb-field{display:flex;flex-direction:column;gap:3px;}",
-  ".rb-flabel{font-size:10.5px;color:var(--fg3);}",
-  ".rb-input{box-sizing:border-box;padding:4px 8px;border-radius:6px;border:1px solid var(--bd-soft);background:var(--bg);color:var(--fg);font-size:12px;}",
+  // ── 폼(응집 카드 — 작성 표면을 배경에서 띄운다) ──
+  ".rb-form{display:flex;flex-direction:column;gap:11px;margin:8px;padding:13px 12px 12px;border-radius:10px;border:1px solid var(--bd-soft);background:color-mix(in srgb,var(--fg) 3.5%,var(--bg));box-shadow:0 1px 2px color-mix(in srgb,var(--fg) 8%,transparent);}",
+  ".rb-field{display:flex;flex-direction:column;gap:5px;}",
+  ".rb-flabel{font-size:11px;font-weight:600;letter-spacing:.02em;color:var(--fg2);}",
+  // 입력 표면 — 카드보다 한 단 더 띄워(elevation) 또렷이. 포커스=accent 테두리 + 부드러운 링.
+  ".rb-input{box-sizing:border-box;width:100%;min-height:30px;padding:5px 9px;border-radius:7px;border:1px solid var(--bd-soft);background:color-mix(in srgb,var(--fg) 6%,var(--bg));color:var(--fg);font-size:12px;transition:border-color .12s,box-shadow .12s;}",
   ".rb-input::placeholder{color:var(--fg3);}",
-  ".rb-formbtns{display:flex;gap:6px;justify-content:flex-end;}",
-  ".rb-fbtn{border:1px solid var(--bd-soft);background:var(--bg);color:var(--fg2);border-radius:6px;padding:4px 12px;cursor:pointer;font-size:12px;}",
+  ".rb-input:focus,.rb-input:focus-visible{border-color:var(--acc);outline:none;box-shadow:0 0 0 3px color-mix(in srgb,var(--acc) 20%,transparent);}",
+  ".rb-formbtns{display:flex;gap:7px;justify-content:flex-end;margin-top:2px;}",
+  ".rb-fbtn{border:1px solid var(--bd-soft);background:color-mix(in srgb,var(--fg) 6%,var(--bg));color:var(--fg2);border-radius:7px;padding:5px 14px;cursor:pointer;font-size:12px;font-weight:500;transition:all .12s;}",
   ".rb-fbtn:hover{color:var(--fg);border-color:var(--bd);}",
   ".rb-fbtn.primary{background:var(--acc);border-color:var(--acc);color:var(--bg);}",
+  ".rb-fbtn.primary:hover{filter:brightness(1.08);}",
   // ── 인라인 배지 에디터 ──
   ".rb-editor-wrap{position:relative;}",
-  ".rb-editor{box-sizing:border-box;min-height:34px;padding:6px 8px;border-radius:6px;border:1px solid var(--bd-soft);background:var(--bg);color:var(--fg);font-size:12px;line-height:1.7;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap;word-break:break-word;outline:none;}",
-  ".rb-editor:focus{border-color:var(--acc);}",
+  ".rb-editor{box-sizing:border-box;min-height:42px;padding:8px 9px;border-radius:7px;border:1px solid var(--bd-soft);background:color-mix(in srgb,var(--fg) 6%,var(--bg));color:var(--fg);font-size:12px;line-height:1.8;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap;word-break:break-word;outline:none;transition:border-color .12s,box-shadow .12s;}",
+  ".rb-editor:focus{border-color:var(--acc);box-shadow:0 0 0 3px color-mix(in srgb,var(--acc) 20%,transparent);}",
   ".rb-editor:empty::before{content:attr(data-ph);color:var(--fg3);}",
   ".rb-badge{display:inline;padding:1px 7px;margin:0 1px;border-radius:5px;font-size:11px;font-weight:500;white-space:nowrap;border:1px solid color-mix(in srgb,var(--fg3) 50%,transparent);background:color-mix(in srgb,var(--fg) 8%,var(--bg));color:var(--fg2);cursor:default;user-select:all;}",
   // provider 6색 토큰맵 — 색이 곧 타입(시크릿=호박/민감, command=청/링킹, param=보라, env=청록, var=시안, clipboard=주황).
@@ -1572,9 +1579,9 @@ var CSS = [
   ".rb-badge.clipboard{color:color-mix(in srgb,#f2945c 80%,var(--fg));border-color:color-mix(in srgb,#f2945c 48%,transparent);background:color-mix(in srgb,#f2945c 17%,var(--bg));}",
   ".rb-badge.selected{outline:2px solid var(--acc);outline-offset:0;}",
   // 테마 셀렉트 — 네이티브 3D 베벨 제거(appearance:none) + 커스텀 chevron(인라인 SVG).
-  `.rb-select{box-sizing:border-box;appearance:none;-webkit-appearance:none;padding:4px 26px 4px 8px;border-radius:6px;border:1px solid var(--bd-soft);background-color:var(--bg);color:var(--fg);font-size:12px;cursor:pointer;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6'><path d='M1 1l4 4 4-4' fill='none' stroke='%23888' stroke-width='1.4' stroke-linecap='round'/></svg>");background-repeat:no-repeat;background-position:right 9px center;}`,
+  `.rb-select{box-sizing:border-box;min-height:30px;appearance:none;-webkit-appearance:none;padding:5px 28px 5px 9px;border-radius:7px;border:1px solid var(--bd-soft);background-color:color-mix(in srgb,var(--fg) 6%,var(--bg));color:var(--fg);font-size:12px;cursor:pointer;transition:border-color .12s,box-shadow .12s;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6'><path d='M1 1l4 4 4-4' fill='none' stroke='%23999' stroke-width='1.4' stroke-linecap='round'/></svg>");background-repeat:no-repeat;background-position:right 10px center;}`,
   ".rb-select:hover{border-color:var(--bd);}",
-  ".rb-select:focus{border-color:var(--acc);outline:none;}",
+  ".rb-select:focus{border-color:var(--acc);outline:none;box-shadow:0 0 0 3px color-mix(in srgb,var(--acc) 20%,transparent);}",
   // ── 자동완성 드롭다운 ──
   ".rb-suggest{position:absolute;left:8px;right:8px;z-index:20;margin-top:2px;max-height:160px;overflow-y:auto;background:var(--bg);border:1px solid var(--bd);border-radius:6px;box-shadow:0 4px 14px color-mix(in srgb,var(--fg) 18%,transparent);}",
   ".rb-sg-item{padding:4px 8px;font-size:11.5px;color:var(--fg2);cursor:pointer;display:flex;justify-content:space-between;gap:8px;}",
@@ -2099,7 +2106,20 @@ function createRunbookView(app, mounts) {
         if (!commands.length) {
           const empty = document.createElement("div");
           empty.className = "rb-empty";
-          empty.textContent = searchTerm ? "\uAC80\uC0C9 \uACB0\uACFC\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4" : "\uBA85\uB839\uC774 \uC5C6\uC2B5\uB2C8\uB2E4";
+          const icon = document.createElement("span");
+          icon.innerHTML = "<svg width='40' height='40' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'><rect x='4' y='3' width='16' height='18' rx='2'/><path d='M8 7.5h8M8 11.5h8M8 15.5h5'/></svg>";
+          const t = document.createElement("div");
+          t.className = "rb-empty-t";
+          const h = document.createElement("div");
+          h.className = "rb-empty-h";
+          if (searchTerm) {
+            t.textContent = "\uAC80\uC0C9 \uACB0\uACFC\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4";
+            h.textContent = `"${searchTerm}" \uC640 \uC77C\uCE58\uD558\uB294 \uBA85\uB839 \uC5C6\uC74C`;
+          } else {
+            t.textContent = "\uC544\uC9C1 \uBA85\uB839\uC774 \uC5C6\uC2B5\uB2C8\uB2E4";
+            h.textContent = "\uC624\uB978\uCABD \uC704 + \uB85C \uCCAB \uBA85\uB839\uC744 \uCD94\uAC00\uD558\uC138\uC694";
+          }
+          empty.append(icon, t, h);
           listEl.append(empty);
           return;
         }
