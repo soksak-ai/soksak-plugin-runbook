@@ -9,7 +9,13 @@ export interface ProcessApi {
   spawn: (
     cmd: string,
     args: string[],
-    opts?: { cwd?: string; env?: Record<string, string>; envRemove?: string[] },
+    opts?: {
+      cwd?: string;
+      env?: Record<string, string>;
+      envRemove?: string[];
+      // envVar→secretKey. 평문은 안 넘긴다 — 키 이름만. Rust 경계가 볼트에서 해소해 자식 env 에 주입(R2).
+      secretEnv?: Record<string, string>;
+    },
   ) => Promise<number>;
   onData: (handle: number, cb: (data: Uint8Array) => void) => { dispose: () => void };
   onStderr: (handle: number, cb: (data: Uint8Array) => void) => { dispose: () => void };
@@ -39,7 +45,7 @@ const decode = (() => {
 export function runShell(
   proc: ProcessApi,
   resolved: string,
-  opts?: { cwd?: string; env?: Record<string, string> },
+  opts?: { cwd?: string; env?: Record<string, string>; secretEnv?: Record<string, string> },
 ): Promise<ShellResult> {
   return new Promise<ShellResult>((resolve, reject) => {
     let outBuf = "";

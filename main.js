@@ -520,12 +520,32 @@ function runShell(proc, resolved, opts) {
 }
 
 // src/exec/engine.ts
+function applySecretEnv(text, handles) {
+  const secretEnv = {};
+  const envForKey = /* @__PURE__ */ new Map();
+  let next = text;
+  for (const h of handles) {
+    let envVar = envForKey.get(h.key);
+    if (!envVar) {
+      envVar = `SOKSAK_SECRET_${envForKey.size}`;
+      envForKey.set(h.key, envVar);
+      secretEnv[envVar] = h.key;
+    }
+    const marker = ` secret:${h.key} `;
+    next = next.replace(marker, ` $${envVar} `);
+  }
+  return { text: next, secretEnv };
+}
 function hasSecretRef(template) {
   return parse(template).refs.some((r) => r.provider === "secret");
 }
 function resolveTemplate(template, ctx) {
   const r = resolve(parse(template), ctx);
-  return { text: r.text, unresolved: r.errors.map((e) => e.ref.raw) };
+  return {
+    text: r.text,
+    unresolved: r.errors.map((e) => e.ref.raw),
+    handles: r.handles
+  };
 }
 async function runCommand(deps, input) {
   const { data } = deps;
@@ -553,36 +573,41 @@ async function runCommand(deps, input) {
   const linked = planLink(input.commandId, root.command, (id) => templates.get(id) ?? null);
   if (!linked.ok) return { ok: false, code: "CYCLE", cycle: linked.cycle };
   const plan = linked.plan;
-  for (const tmpl of templates.values()) {
-    if (hasSecretRef(tmpl)) {
-      return {
-        ok: false,
-        code: "SECRET_PENDING",
-        message: "secret \uCC38\uC870 \u2014 \uD3C9\uBB38 \uC8FC\uC785\uC740 \uD6C4\uC18D(Rust \uACBD\uACC4). \uC774\uBC88 \uBC94\uC704\uB294 \uC178/\uD130\uBBF8\uB110 \uC2E4\uD589\uB9CC."
-      };
+  const type = root.executionType;
+  if (type === "terminal") {
+    for (const tmpl of templates.values()) {
+      if (hasSecretRef(tmpl)) {
+        return {
+          ok: false,
+          code: "SECRET_PENDING",
+          message: "terminal+secret \uBBF8\uC9C0\uC6D0(ps \uB178\uCD9C \uC704\uD5D8) \u2014 script/background \uB85C \uC2E4\uD589\uD558\uC138\uC694."
+        };
+      }
     }
   }
   const commandCtx = {};
   const baseCtx = () => ({
     param: input.inputs ?? {},
     env: input.env ?? {},
-    command: commandCtx
+    command: commandCtx,
+    secretNs: input.secretNs
   });
   const proc = deps.process;
   for (const id of plan.order) {
     if (id === input.commandId) continue;
     const tmpl = templates.get(id);
     if (tmpl == null) continue;
-    const { text, unresolved } = resolveTemplate(tmpl, baseCtx());
+    const { text, unresolved, handles } = resolveTemplate(tmpl, baseCtx());
     if (unresolved.length > 0) {
       return { ok: false, code: "UNRESOLVED", unresolved };
     }
     if (!proc) {
       return { ok: false, code: "NO_RUNTIME", message: "process \uAD8C\uD55C/\uD45C\uBA74 \uC5C6\uC74C \u2014 \uC178 \uC2E4\uD589 \uBD88\uAC00" };
     }
+    const sub = applySecretEnv(text, handles);
     let out;
     try {
-      const r = await runShell(proc, text);
+      const r = await runShell(proc, sub.text, { secretEnv: sub.secretEnv });
       out = r.stdout;
     } catch (e) {
       return { ok: false, code: "EXEC_ERROR", message: e instanceof Error ? e.message : String(e) };
@@ -593,8 +618,9 @@ async function runCommand(deps, input) {
   if (rootResolved.unresolved.length > 0) {
     return { ok: false, code: "UNRESOLVED", unresolved: rootResolved.unresolved };
   }
-  const finalCmd = rootResolved.text;
-  const type = root.executionType;
+  const rootSub = applySecretEnv(rootResolved.text, rootResolved.handles);
+  const finalCmd = rootSub.text;
+  const rootSecretEnv = rootSub.secretEnv;
   if (type === "terminal") {
     const cmds = deps.commands;
     if (!cmds) return { ok: false, code: "NO_RUNTIME", message: "commands \uD45C\uBA74 \uC5C6\uC74C \u2014 \uD130\uBBF8\uB110 \uC2E4\uD589 \uBD88\uAC00" };
@@ -616,7 +642,7 @@ async function runCommand(deps, input) {
   if (!proc) return { ok: false, code: "NO_RUNTIME", message: "process \uAD8C\uD55C/\uD45C\uBA74 \uC5C6\uC74C \u2014 \uC178 \uC2E4\uD589 \uBD88\uAC00" };
   let shell;
   try {
-    shell = await runShell(proc, finalCmd);
+    shell = await runShell(proc, finalCmd, { secretEnv: rootSecretEnv });
   } catch (e) {
     return { ok: false, code: "EXEC_ERROR", message: e instanceof Error ? e.message : String(e) };
   }
@@ -883,7 +909,7 @@ function registerCommands(data, cmds, sub, runtime = {}) {
       const env = p.env && typeof p.env === "object" && !Array.isArray(p.env) ? p.env : void 0;
       const result = await runCommand(
         { data, process: runtime.process, commands: runtime.execute },
-        { commandId: p.commandId, scope: scopeOf(p), inputs, env }
+        { commandId: p.commandId, scope: scopeOf(p), inputs, env, secretNs: runtime.secretNs }
       );
       return result;
     }
@@ -1151,7 +1177,9 @@ var index_default = {
     const execFn = cmds.execute;
     registerCommands(data, cmds, sub, {
       process: app.process,
-      execute: execFn ? { execute: (name, params) => execFn(name, params) } : void 0
+      execute: execFn ? { execute: (name, params) => execFn(name, params) } : void 0,
+      // secret 참조 해소 ns = 이 플러그인 id(평문 아님 — 핸들 ns). secretEnv 주입은 Rust 경계.
+      secretNs: app.pluginId
     });
     sub(
       cmds.register("ref.parse", {

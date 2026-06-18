@@ -49,10 +49,12 @@ const err = (code: string, message: string) => ({ ok: false, code, message });
 const scopeOf = (p: Record<string, unknown>): string | undefined =>
   typeof p.scope === "string" ? p.scope : undefined;
 
-/** 실행 엔진이 의존하는 런타임 표면(셸 spawn + 코어 명령 실행). 권한 게이트로 undefined 가능. */
+/** 실행 엔진이 의존하는 런타임 표면(셸 spawn + 코어 명령 실행). 권한 게이트로 undefined 가능.
+ *  secretNs = 이 플러그인 id(app.pluginId) — secret 참조 해소 시 핸들 ns. 평문 아님. */
 export interface RuntimeApis {
   process?: ProcessApi;
   execute?: ExecuteApi;
+  secretNs?: string;
 }
 
 /** 모든 CRUD + 실행 커맨드를 등록한다. dispose 들은 호출자(activate)가 subscriptions 에 담는다. */
@@ -295,7 +297,7 @@ export function registerCommands(
 
   reg("runbook.command.run", {
     description:
-      "런북 명령 실행. command 참조는 위상순으로 먼저 실행→출력을 다음 입력으로 되먹임(링킹). 순환=CYCLE, 미해소 참조=UNRESOLVED, secret 참조=SECRET_PENDING(평문 주입은 후속). script/background=셸 실행(stdout/stderr·exitCode 캡처), terminal=코어 term.exec(포커스 pane). 결과는 lastOutput/lastStatusCode/lastExecutedAt 갱신 + 히스토리 자동 기록.",
+      "런북 명령 실행. command 참조는 위상순으로 먼저 실행→출력을 다음 입력으로 되먹임(링킹). 순환=CYCLE, 미해소 참조=UNRESOLVED. script/background=셸 실행(stdout/stderr·exitCode 캡처) — secret 참조는 자식 env 주입($SOKSAK_SECRET_N, 평문은 Rust 경계에서만·history/lastOutput 엔 플레이스홀더). terminal=코어 term.exec(포커스 pane) — secret 동반 시 SECRET_PENDING(ps 노출 위험으로 미지원). 결과는 lastOutput/lastStatusCode/lastExecutedAt 갱신 + 히스토리 자동 기록.",
     params: {
       commandId: { type: "string", required: true },
       inputs: { type: "object", description: "파라미터 치환 맵({name}→값)" },
@@ -320,7 +322,7 @@ export function registerCommands(
           : undefined;
       const result = await runCommand(
         { data, process: runtime.process, commands: runtime.execute },
-        { commandId: p.commandId, scope: scopeOf(p), inputs, env },
+        { commandId: p.commandId, scope: scopeOf(p), inputs, env, secretNs: runtime.secretNs },
       );
       // RunResult 는 이미 {ok,...} 형태 — 그대로 반환(code 명시 전파 R4).
       return result;

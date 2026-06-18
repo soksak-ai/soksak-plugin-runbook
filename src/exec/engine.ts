@@ -14,9 +14,34 @@
 
 import { COMMANDS, HISTORY, makeHistory, type CommandRecord } from "../data/model";
 import type { DataApi } from "../data/store";
-import { parse, resolve, type ResolveContext } from "../refs/index";
+import { parse, resolve, type ResolveContext, type SecretHandle } from "../refs/index";
 import { planLink } from "./link";
 import { runShell, type ProcessApi } from "./spawn";
+
+/** secret 핸들 목록 → env 플레이스홀더 치환 + secretEnv 맵. 평문 0 — 키 이름만 흐른다(R2).
+ *  resolve 가 텍스트에 남긴 인라인 마커(" secret:<key> ")를 $SOKSAK_SECRET_<i> 로 바꾸고,
+ *  {SOKSAK_SECRET_<i>: key} 를 누적한다. 같은 key 는 같은 env 로 재사용(중복 주입 0). 순수. */
+export function applySecretEnv(
+  text: string,
+  handles: SecretHandle[],
+): { text: string; secretEnv: Record<string, string> } {
+  const secretEnv: Record<string, string> = {};
+  const envForKey = new Map<string, string>();
+  let next = text;
+  for (const h of handles) {
+    let envVar = envForKey.get(h.key);
+    if (!envVar) {
+      envVar = `SOKSAK_SECRET_${envForKey.size}`;
+      envForKey.set(h.key, envVar);
+      secretEnv[envVar] = h.key;
+    }
+    // resolve 의 NUL 감싼 인라인 마커(\0secret:<key>\0)를 $envVar 로 치환(첫 출현만 — 핸들 1:1).
+    // NUL 래핑이라 사용자 텍스트와 충돌 0. 평문은 들어가지 않는다 — env 참조만.
+    const marker = `\0secret:${h.key}\0`;
+    next = next.replace(marker, `$${envVar}`);
+  }
+  return { text: next, secretEnv };
+}
 
 /** term.exec 등 코어 명령 실행 표면(app.commands.execute). terminal 실행 경로용. */
 export interface ExecuteApi {
@@ -39,6 +64,9 @@ export interface RunInput {
   inputs?: Record<string, string>;
   /** 환경변수 맵({{var}} 치환). 미지정 시 빈 맵(미정의는 LinkError). */
   env?: Record<string, string>;
+  /** 시크릿 네임스페이스(보통 이 플러그인 id). secret 참조 해소 시 핸들 ns 가 된다 — 평문 아님.
+   *  미지정이면 secret 참조는 resolve 단계에서 미해소(UNRESOLVED). */
+  secretNs?: string;
 }
 
 export type RunResult =
@@ -50,18 +78,23 @@ export type RunResult =
   | { ok: false; code: "NO_RUNTIME"; message: string }
   | { ok: false; code: "EXEC_ERROR"; message: string };
 
-/** 템플릿에 secret 참조가 하나라도 있는가(평문 주입 후속 범위 — 이번엔 명시 거부). 순수. */
+/** 템플릿에 secret 참조가 하나라도 있는가. terminal 실행은 secret 미지원(ps 노출 위험) — 거부 게이트. */
 function hasSecretRef(template: string): boolean {
   return parse(template).refs.some((r) => r.provider === "secret");
 }
 
-/** 한 command 를 resolve 용 context 로 푼다. 미해소 참조의 raw 토큰 목록도 함께(UNRESOLVED 보고용). */
+/** 한 command 를 resolve 용 context 로 푼다. 미해소 참조의 raw 토큰 목록 + secret 핸들도 함께.
+ *  text 에는 secret 평문이 아니라 인라인 마커만(R2) — 호출자가 applySecretEnv 로 env 치환한다. */
 function resolveTemplate(
   template: string,
   ctx: ResolveContext,
-): { text: string; unresolved: string[] } {
+): { text: string; unresolved: string[]; handles: SecretHandle[] } {
   const r = resolve(parse(template), ctx);
-  return { text: r.text, unresolved: r.errors.map((e) => e.ref.raw) };
+  return {
+    text: r.text,
+    unresolved: r.errors.map((e) => e.ref.raw),
+    handles: r.handles,
+  };
 }
 
 /** 실행 엔진 단일 진입(R8). 링킹 → resolve → 타입별 실행 → 결과 되먹임. */
@@ -103,24 +136,31 @@ export async function runCommand(
   if (!linked.ok) return { ok: false, code: "CYCLE", cycle: linked.cycle };
   const plan = linked.plan;
 
-  // 3. secret 게이트 — 닫힘 내 어떤 템플릿이든 secret 참조면 명시 거부(후속 범위).
-  for (const tmpl of templates.values()) {
-    if (hasSecretRef(tmpl)) {
-      return {
-        ok: false,
-        code: "SECRET_PENDING",
-        message: "secret 참조 — 평문 주입은 후속(Rust 경계). 이번 범위는 셸/터미널 실행만.",
-      };
+  // 3. secret 게이트 — terminal 실행은 secret 미지원(term.exec 가 셸에 raw 명령을 타이핑 → ps/스크롤백
+  //    노출 위험). 루트가 terminal 이고 닫힘 어디든 secret 참조면 SECRET_PENDING. script/background 는
+  //    자식 env 주입(Rust 경계)이라 평문 노출 없음 → 허용(아래에서 secretEnv 로 실행).
+  const type = root.executionType;
+  if (type === "terminal") {
+    for (const tmpl of templates.values()) {
+      if (hasSecretRef(tmpl)) {
+        return {
+          ok: false,
+          code: "SECRET_PENDING",
+          message: "terminal+secret 미지원(ps 노출 위험) — script/background 로 실행하세요.",
+        };
+      }
     }
   }
 
   // 4. 링킹 실행 — 위상순으로 참조 command 출력을 모은다(루트 제외, 각 1회). 셸 실행이 필요하므로
   //    process 표면이 없으면 NO_RUNTIME. 모은 출력은 context.command[id] = stdout(jsonPath 추출 대상).
+  //    secret 참조는 인라인 마커로 resolve → applySecretEnv 로 $SOKSAK_SECRET_N + secretEnv 맵 치환.
   const commandCtx: Record<string, unknown> = {};
   const baseCtx = (): ResolveContext => ({
     param: input.inputs ?? {},
     env: input.env ?? {},
     command: commandCtx,
+    secretNs: input.secretNs,
   });
 
   const proc = deps.process;
@@ -128,16 +168,18 @@ export async function runCommand(
     if (id === input.commandId) continue; // 루트는 마지막에 타입별 실행
     const tmpl = templates.get(id);
     if (tmpl == null) continue;
-    const { text, unresolved } = resolveTemplate(tmpl, baseCtx());
+    const { text, unresolved, handles } = resolveTemplate(tmpl, baseCtx());
     if (unresolved.length > 0) {
       return { ok: false, code: "UNRESOLVED", unresolved };
     }
     if (!proc) {
       return { ok: false, code: "NO_RUNTIME", message: "process 권한/표면 없음 — 셸 실행 불가" };
     }
+    // secret 핸들 → env 플레이스홀더 + secretEnv 맵(평문 0 — Rust 경계가 주입).
+    const sub = applySecretEnv(text, handles);
     let out: string;
     try {
-      const r = await runShell(proc, text);
+      const r = await runShell(proc, sub.text, { secretEnv: sub.secretEnv });
       out = r.stdout;
     } catch (e) {
       return { ok: false, code: "EXEC_ERROR", message: e instanceof Error ? e.message : String(e) };
@@ -146,15 +188,17 @@ export async function runCommand(
     commandCtx[id] = coerceOutput(out);
   }
 
-  // 5. 루트 resolve — 미해소면 UNRESOLVED.
+  // 5. 루트 resolve — 미해소면 UNRESOLVED. secret 은 인라인 마커(평문 0) → applySecretEnv 로 env 치환.
   const rootResolved = resolveTemplate(root.command, baseCtx());
   if (rootResolved.unresolved.length > 0) {
     return { ok: false, code: "UNRESOLVED", unresolved: rootResolved.unresolved };
   }
-  const finalCmd = rootResolved.text;
+  // finalCmd 에는 평문 시크릿이 절대 없다 — $SOKSAK_SECRET_N 플레이스홀더만(lastOutput·history 도 동일).
+  const rootSub = applySecretEnv(rootResolved.text, rootResolved.handles);
+  const finalCmd = rootSub.text;
+  const rootSecretEnv = rootSub.secretEnv;
 
   // 6. 타입별 실행.
-  const type = root.executionType;
   if (type === "terminal") {
     const cmds = deps.commands;
     if (!cmds) return { ok: false, code: "NO_RUNTIME", message: "commands 표면 없음 — 터미널 실행 불가" };
@@ -180,7 +224,8 @@ export async function runCommand(
 
   let shell;
   try {
-    shell = await runShell(proc, finalCmd);
+    // 평문 시크릿은 secretEnv 키 이름만 넘어가고 Rust 경계가 자식 env 로 주입($SOKSAK_SECRET_N 가 셸에서 확장).
+    shell = await runShell(proc, finalCmd, { secretEnv: rootSecretEnv });
   } catch (e) {
     return { ok: false, code: "EXEC_ERROR", message: e instanceof Error ? e.message : String(e) };
   }
