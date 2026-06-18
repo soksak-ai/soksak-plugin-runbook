@@ -1,73 +1,84 @@
-// 런북 플러그인 entry — 이번 범위는 최소 activate 다(엔진을 소켓에서 검증하는 커맨드 2개 +
-// 데이터 컬렉션 define). 5종 실행타입·배지 입력 UI·secretRef 주입은 후속 워크플로.
+// 런북 플러그인 entry — 이번 범위 = 데이터 모델(commands/groups/history) + CRUD 커맨드 headless
+// (R7: UI 없이 E2E 전부). 5종 실행기·secretRef 주입·배지 입력 UI 는 후속 워크플로.
 //
-// Reference 해석 엔진(src/refs)은 순수 코어이며, 여기서는 그것을 sok CLI/MCP 로 노출해
-// 헤드리스 E2E 가 parse/resolve 동작을 단언할 수 있게 한다(R7 — 모든 기능을 커맨드로).
+// 데이터는 코어 app.data(SQLite, CJK 전문검색, ns=pluginId 격리), 변경 동기화는 app.data.watch
+// (전 창 브로드캐스트, 폴링 0). Reference 해석 엔진(src/refs)은 순수 코어 — command.add/update 시
+// command 템플릿을 parse 해 Reference 메타를 추출·저장한다(검증·표시용, 실행은 후속).
 
+import { registerCommands } from "./commands/runbook";
+import { defineCollections, type DataApi } from "./data/store";
+import { COMMANDS, GROUPS, HISTORY } from "./data/model";
 import { parse, resolve, type ResolveContext } from "./refs/index";
 
-const COLL = "runbooks";
+type Disposable = { dispose: () => void };
+
+interface CommandsApi {
+  register: (
+    name: string,
+    spec: {
+      description: string;
+      params?: Record<string, unknown>;
+      returns?: string;
+      examples?: string[];
+      handler: (params: Record<string, unknown>) => unknown;
+    },
+  ) => Disposable;
+}
 
 interface PluginContext {
   app: {
     pluginId: string;
-    data?: {
-      define: (
-        coll: string,
-        opts: { indexes?: string[]; fts?: string[] },
-      ) => Promise<void>;
-    };
-    commands?: {
-      register: (
-        name: string,
-        spec: {
-          description: string;
-          handler: (params: Record<string, unknown>) => unknown;
-        },
-      ) => { dispose: () => void };
-    };
+    data?: DataApi;
+    commands?: CommandsApi;
   };
-  subscriptions: { dispose: () => void }[];
+  subscriptions: Disposable[];
 }
 
 export default {
   async activate(ctx: PluginContext) {
     const app = ctx.app;
-    const sub = (d: { dispose: () => void }) => ctx.subscriptions.push(d);
+    const sub = (d: Disposable) => ctx.subscriptions.push(d);
 
-    // 데이터 컬렉션 정의(멱등). 작업 본문·이름은 인덱스, 본문은 CJK 검색 대상.
-    // 실제 작업 CRUD 는 후속 범위 — 여기서는 컬렉션만 마련한다.
-    await app.data?.define(COLL, {
-      indexes: ["name", "kind"],
-      fts: ["name", "template"],
-    });
-
-    // ref.parse — 템플릿을 파싱해 노드/Reference 를 그대로 반환(엔진 검증용).
-    if (app.commands) {
-      sub(
-        app.commands.register("ref.parse", {
-          description:
-            "Reference 템플릿을 파싱해 노드와 추출된 Reference 목록을 반환(엔진 검증).",
-          handler: (params) => {
-            const template = String(params.template ?? "");
-            return parse(template);
-          },
-        }),
-      );
-
-      // ref.resolve — 템플릿을 context 로 해석해 텍스트/에러/핸들을 반환(엔진 검증용).
-      // 평문 시크릿은 받지 않는다 — secretNs 만(핸들 생성 R2).
-      sub(
-        app.commands.register("ref.resolve", {
-          description:
-            "Reference 템플릿을 주어진 context 로 해석해 텍스트·에러·시크릿 핸들을 반환(엔진 검증).",
-          handler: (params) => {
-            const template = String(params.template ?? "");
-            const ctxIn = (params.context ?? {}) as ResolveContext;
-            return resolve(parse(template), ctxIn);
-          },
-        }),
-      );
+    if (!app.data || !app.commands) {
+      // data·commands 권한 없으면 표면이 undefined(권한 게이트) — 헤드리스 CRUD 불가.
+      return;
     }
+    const data = app.data;
+    const cmds = app.commands;
+
+    // 컬렉션 3종 define(멱등).
+    await defineCollections(data);
+
+    // 전 창 동기화(데이터 변경 → watch). 뷰는 후속이지만 watch seam 은 지금 둔다(폴링 0).
+    for (const coll of [COMMANDS, GROUPS, HISTORY]) {
+      sub(data.watch(coll, undefined, () => {}));
+    }
+
+    // CRUD 커맨드 등록(전 기능 노출 R7).
+    registerCommands(data, cmds, sub);
+
+    // ── Reference 엔진 검증 노출(엔진 자체 단언용 — parse/resolve 순수 코어). ──
+    sub(
+      cmds.register("ref.parse", {
+        description: "Reference 템플릿을 파싱해 노드와 추출된 Reference 목록을 반환(엔진 검증).",
+        params: { template: { type: "string", required: true } },
+        returns: "{ nodes, refs }",
+        handler: (p) => parse(String(p.template ?? "")),
+      }),
+    );
+    sub(
+      cmds.register("ref.resolve", {
+        description:
+          "Reference 템플릿을 주어진 context 로 해석해 텍스트·에러·시크릿 핸들을 반환(엔진 검증). 평문 시크릿 미수신 — secretNs 만.",
+        params: { template: { type: "string", required: true }, context: { type: "object" } },
+        returns: "{ text, errors, handles }",
+        handler: (p) =>
+          resolve(parse(String(p.template ?? "")), (p.context ?? {}) as ResolveContext),
+      }),
+    );
+  },
+
+  deactivate() {
+    // 등록물·구독은 ctx.subscriptions/호스트 tracker 가 자동 수거.
   },
 };
