@@ -27,6 +27,7 @@ import {
   runCommand,
   type ExecuteApi,
   type ProcessApi,
+  type SecretsProbe,
 } from "../exec/index";
 
 interface CommandsApi {
@@ -55,6 +56,8 @@ export interface RuntimeApis {
   process?: ProcessApi;
   execute?: ExecuteApi;
   secretNs?: string;
+  /** secret 가용성 프로브(app.secrets) — 셸 실행 전 SECRET_PENDING 게이트용. 평문 아님(has 만). */
+  secrets?: SecretsProbe;
 }
 
 /** 모든 CRUD + 실행 커맨드를 등록한다. dispose 들은 호출자(activate)가 subscriptions 에 담는다. */
@@ -321,7 +324,7 @@ export function registerCommands(
           ? (p.env as Record<string, string>)
           : undefined;
       const result = await runCommand(
-        { data, process: runtime.process, commands: runtime.execute },
+        { data, process: runtime.process, commands: runtime.execute, secrets: runtime.secrets },
         { commandId: p.commandId, scope: scopeOf(p), inputs, env, secretNs: runtime.secretNs },
       );
       // RunResult 는 이미 {ok,...} 형태 — 그대로 반환(code 명시 전파 R4).

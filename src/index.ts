@@ -58,6 +58,8 @@ interface UiApi {
 
 interface SecretsApi {
   keys: () => Promise<string[]>;
+  /** 이 플러그인 ns 에 key 존재 여부(볼트 언락 전제). 평문 0 — boolean 만. 실행 엔진의 SECRET_PENDING 게이트. */
+  has: (key: string) => Promise<boolean>;
 }
 
 interface PluginContext {
@@ -119,6 +121,8 @@ export default {
         : undefined,
       // secret 참조 해소 ns = 이 플러그인 id(평문 아님 — 핸들 ns). secretEnv 주입은 Rust 경계.
       secretNs: app.pluginId,
+      // 셸 실행 전 가용성 게이트(SECRET_PENDING) — app.secrets.has(평문 0, ns 자동주입).
+      secrets: app.secrets,
     });
 
     // ── Reference 엔진 검증 노출(엔진 자체 단언용 — parse/resolve 순수 코어). ──
