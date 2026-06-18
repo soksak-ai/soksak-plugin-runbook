@@ -1,3 +1,138 @@
+// src/data/enums.ts
+var EXECUTION_TYPES = [
+  "terminal",
+  "script",
+  "background",
+  "schedule",
+  "api"
+];
+var REPEAT_TYPES = ["none", "daily", "weekly", "monthly"];
+var HTTP_METHODS = ["GET", "POST", "PUT", "DELETE", "PATCH"];
+var BODY_TYPES = ["none", "json", "form", "multipart"];
+var GROUP_COLORS = [
+  "blue",
+  "red",
+  "green",
+  "orange",
+  "purple",
+  "gray"
+];
+function isOneOf(vals, v) {
+  return typeof v === "string" && vals.includes(v);
+}
+
+// src/data/model.ts
+var COMMANDS = "commands";
+var GROUPS = "groups";
+var HISTORY = "history";
+var COMMANDS_SCHEMA = {
+  indexes: ["groupId", "favorite", "deleted", "executionType", "order"],
+  fts: ["label", "command"]
+};
+var GROUPS_SCHEMA = {
+  indexes: ["order"],
+  fts: []
+};
+var HISTORY_SCHEMA = {
+  indexes: ["deleted", "type", "at"],
+  fts: ["label", "command", "output"]
+};
+var str = (v) => typeof v === "string" ? v : void 0;
+var num = (v) => typeof v === "number" && Number.isFinite(v) ? v : void 0;
+var strMap = (v) => {
+  if (v == null || typeof v !== "object" || Array.isArray(v)) return void 0;
+  const out = {};
+  for (const [k, val] of Object.entries(v)) {
+    if (typeof val === "string") out[k] = val;
+  }
+  return out;
+};
+var numArr = (v) => {
+  if (!Array.isArray(v)) return void 0;
+  const out = v.filter((x) => typeof x === "number");
+  return out.length ? out : void 0;
+};
+function pickOptional(p) {
+  const o = {};
+  const assign = (k, v) => {
+    if (v !== void 0) o[k] = v;
+  };
+  assign("terminalApp", str(p.terminalApp));
+  assign("intervalSec", num(p.intervalSec));
+  assign("scheduleAt", num(p.scheduleAt));
+  assign(
+    "repeatType",
+    isOneOf(REPEAT_TYPES, p.repeatType) ? p.repeatType : void 0
+  );
+  assign("reminderSecs", numArr(p.reminderSecs));
+  assign("url", str(p.url));
+  assign(
+    "httpMethod",
+    isOneOf(HTTP_METHODS, p.httpMethod) ? p.httpMethod : void 0
+  );
+  assign("headers", strMap(p.headers));
+  assign("queryParams", strMap(p.queryParams));
+  assign(
+    "bodyType",
+    isOneOf(BODY_TYPES, p.bodyType) ? p.bodyType : void 0
+  );
+  assign("bodyData", str(p.bodyData));
+  assign("fileParams", strMap(p.fileParams));
+  assign("lastOutput", str(p.lastOutput));
+  assign("lastStatusCode", num(p.lastStatusCode));
+  assign("lastExecutedAt", num(p.lastExecutedAt));
+  return o;
+}
+function validateCommandInput(p) {
+  if (typeof p.label !== "string" || p.label.trim() === "") return "label \uD544\uC694";
+  if (typeof p.command !== "string") return "command(\uD15C\uD50C\uB9BF) \uD544\uC694";
+  if (!isOneOf(EXECUTION_TYPES, p.executionType))
+    return `executionType \uC601\uBB38\uD0A4 \uD544\uC694(${EXECUTION_TYPES.join("|")})`;
+  return null;
+}
+function makeCommand(p, opts) {
+  return {
+    label: String(p.label),
+    command: String(p.command),
+    executionType: p.executionType,
+    groupId: opts.groupId,
+    favorite: p.favorite === true,
+    deleted: false,
+    order: opts.order,
+    ...opts.refs ? { refs: opts.refs } : {},
+    ...pickOptional(p)
+  };
+}
+function mergeCommand(existing, p, refs) {
+  const next = { ...existing, ...pickOptional(p) };
+  if (typeof p.label === "string" && p.label.trim() !== "") next.label = p.label;
+  if (typeof p.command === "string") next.command = p.command;
+  if (isOneOf(EXECUTION_TYPES, p.executionType))
+    next.executionType = p.executionType;
+  if (typeof p.favorite === "boolean") next.favorite = p.favorite;
+  if (typeof p.groupId === "string") next.groupId = p.groupId;
+  if (refs !== void 0) next.refs = refs;
+  return next;
+}
+function makeGroup(p, order) {
+  if (typeof p.name !== "string" || p.name.trim() === "") return null;
+  const color = isOneOf(GROUP_COLORS, p.color) ? p.color : "gray";
+  return { name: p.name, color, order };
+}
+function makeHistory(p) {
+  const rec = {
+    at: Date.now(),
+    label: p.label,
+    command: p.command,
+    type: p.type,
+    deleted: false
+  };
+  if (p.output !== void 0) rec.output = p.output;
+  if (p.statusCode !== void 0) rec.statusCode = p.statusCode;
+  if (p.commandId !== void 0) rec.commandId = p.commandId;
+  return rec;
+}
+
 // src/refs/patterns.ts
 var PARAM_RE = /\{([A-Za-z0-9_.-]+)(?::([^{}]*))?\}/g;
 var ENV_RE = /\{\{\s*([A-Za-z0-9_.-]+)\s*\}\}/g;
@@ -186,37 +321,559 @@ function resolve(parsed, ctx) {
   return { text, errors, handles };
 }
 
+// src/data/store.ts
+async function defineCollections(data) {
+  await data.define(COMMANDS, COMMANDS_SCHEMA);
+  await data.define(GROUPS, GROUPS_SCHEMA);
+  await data.define(HISTORY, HISTORY_SCHEMA);
+}
+function extractRefs(template) {
+  const { refs } = parse(template);
+  return refs.map((r) => {
+    const m = { provider: r.provider, key: r.key };
+    if (r.jsonPath !== void 0) m.jsonPath = r.jsonPath;
+    if (r.options !== void 0) m.options = r.options;
+    return m;
+  });
+}
+async function ensureDefaultGroup(data, scope) {
+  const groups = await data.query(GROUPS, {
+    scope,
+    order: "order",
+    limit: 1,
+    offset: 0
+  });
+  if (groups.length > 0 && typeof groups[0].id === "string") return groups[0].id;
+  return data.put(
+    GROUPS,
+    { name: "\uAE30\uBCF8", color: "gray", order: 0 },
+    { scope }
+  );
+}
+async function listCommands(data, f) {
+  const where = { deleted: f.trash === true };
+  if (f.favorite === true) where.favorite = true;
+  if (typeof f.groupId === "string") where.groupId = f.groupId;
+  return await data.query(COMMANDS, {
+    scope: f.scope,
+    where,
+    order: "order",
+    desc: false,
+    limit: f.limit ?? 500,
+    offset: f.offset
+  });
+}
+async function nextCommandOrder(data, scope) {
+  const rows = await data.query(COMMANDS, {
+    scope,
+    where: { deleted: false },
+    order: "order",
+    desc: true,
+    limit: 1
+  });
+  return rows.length ? (rows[0].order ?? 0) + 1 : 0;
+}
+async function listHistory(data, f) {
+  const where = { deleted: f.trash === true };
+  if (typeof f.type === "string") where.type = f.type;
+  return await data.query(HISTORY, {
+    scope: f.scope,
+    where,
+    order: "at",
+    desc: true,
+    limit: f.limit ?? 200
+  });
+}
+
+// src/commands/runbook.ts
+var ok = (extra) => ({ ok: true, ...extra });
+var err = (code, message) => ({ ok: false, code, message });
+var scopeOf = (p) => typeof p.scope === "string" ? p.scope : void 0;
+function registerCommands(data, cmds, sub) {
+  const reg = (name, spec) => sub(cmds.register(name, spec));
+  reg("runbook.command.add", {
+    description: "\uB7F0\uBD81 \uBA85\uB839 \uCD94\uAC00. label\xB7command(\uD15C\uD50C\uB9BF)\xB7executionType(terminal|script|background|schedule|api) \uD544\uC218. groupId \uC0DD\uB7B5 \uC2DC \uAE30\uBCF8 \uADF8\uB8F9. command \uD15C\uD50C\uB9BF\uC758 Reference \uBA54\uD0C0\uB294 parse \uB85C \uCD94\uCD9C\xB7\uC800\uC7A5(\uAC80\uC99D\uC6A9).",
+    params: {
+      label: { type: "string", required: true },
+      command: { type: "string", required: true, description: "\uC2E4\uD589 \uD15C\uD50C\uB9BF(Reference \uD1A0\uD070 \uD3EC\uD568 \uAC00\uB2A5)" },
+      executionType: { type: "string", required: true },
+      groupId: { type: "string", description: "\uC0DD\uB7B5 \uC2DC \uAE30\uBCF8 \uADF8\uB8F9" },
+      favorite: { type: "boolean" },
+      scope: { type: "string", description: "\uD504\uB85C\uC81D\uD2B8 \uD30C\uD2F0\uC158(\uC0DD\uB7B5=\uC804\uC5ED)" }
+    },
+    returns: "{ commandId, refs }",
+    examples: [
+      `sok plugin.soksak-plugin-runbook.runbook.command.add '{"label":"\uBC30\uD3EC","command":"make deploy {env:dev|prod}","executionType":"script"}'`
+    ],
+    handler: async (p) => {
+      const invalid = validateCommandInput(p);
+      if (invalid) return err("INVALID_PARAMS", invalid);
+      const scope = scopeOf(p);
+      const groupId = typeof p.groupId === "string" && p.groupId ? p.groupId : await ensureDefaultGroup(data, scope);
+      const refs = extractRefs(String(p.command));
+      const order = await nextCommandOrder(data, scope);
+      const rec = makeCommand(p, { groupId, order, refs });
+      const commandId = await data.put(COMMANDS, rec, { scope });
+      return ok({ commandId, refs });
+    }
+  });
+  reg("runbook.command.get", {
+    description: "\uBA85\uB839 1\uAC74 \uC870\uD68C(Reference \uBA54\uD0C0 \uD3EC\uD568). \uC5C6\uC73C\uBA74 TARGET_NOT_FOUND.",
+    params: { commandId: { type: "string", required: true }, scope: { type: "string" } },
+    returns: "{ command }",
+    handler: async (p) => {
+      if (typeof p.commandId !== "string") return err("INVALID_PARAMS", "commandId \uD544\uC694");
+      const rec = await data.get(COMMANDS, p.commandId, { scope: scopeOf(p) });
+      if (!rec) return err("TARGET_NOT_FOUND", "\uBA85\uB839 \uC5C6\uC74C");
+      return ok({ command: rec });
+    }
+  });
+  reg("runbook.command.refs", {
+    description: "\uBA85\uB839\uC758 command \uD15C\uD50C\uB9BF\uC744 parse \uD574 Reference \uBA54\uD0C0\uB97C \uBC18\uD658(\uAC80\uC99D\xB7\uD45C\uC2DC\uC6A9 \u2014 \uC2E4\uD589 \uC544\uB2D8).",
+    params: { commandId: { type: "string", required: true }, scope: { type: "string" } },
+    returns: "{ refs }",
+    handler: async (p) => {
+      if (typeof p.commandId !== "string") return err("INVALID_PARAMS", "commandId \uD544\uC694");
+      const rec = await data.get(COMMANDS, p.commandId, {
+        scope: scopeOf(p)
+      });
+      if (!rec) return err("TARGET_NOT_FOUND", "\uBA85\uB839 \uC5C6\uC74C");
+      return ok({ refs: extractRefs(rec.command) });
+    }
+  });
+  reg("runbook.command.update", {
+    description: "\uBA85\uB839 \uAC31\uC2E0(\uC804\uCCB4\uAD50\uCCB4 \u2014 \uB204\uB77D \uD544\uB4DC\uB294 \uAE30\uC874 \uBCF4\uC874). command \uBCC0\uACBD \uC2DC Reference \uBA54\uD0C0 \uC7AC\uCD94\uCD9C.",
+    params: {
+      commandId: { type: "string", required: true },
+      label: { type: "string" },
+      command: { type: "string" },
+      executionType: { type: "string" },
+      favorite: { type: "boolean" },
+      groupId: { type: "string" },
+      scope: { type: "string" }
+    },
+    returns: "{ commandId, refs }",
+    handler: async (p) => {
+      if (typeof p.commandId !== "string") return err("INVALID_PARAMS", "commandId \uD544\uC694");
+      const scope = scopeOf(p);
+      const rec = await data.get(COMMANDS, p.commandId, {
+        scope
+      });
+      if (!rec) return err("TARGET_NOT_FOUND", "\uBA85\uB839 \uC5C6\uC74C");
+      const refs = typeof p.command === "string" ? extractRefs(p.command) : rec.refs;
+      const next = mergeCommand(rec, p, refs);
+      await data.put(COMMANDS, next, { scope, id: p.commandId });
+      return ok({ commandId: p.commandId, refs: next.refs ?? [] });
+    }
+  });
+  reg("runbook.command.delete", {
+    description: "\uBA85\uB839 \uD734\uC9C0\uD1B5\uC73C\uB85C(\uC18C\uD504\uD2B8 \uC0AD\uC81C \u2014 boolean deleted). \uBCF5\uC6D0 \uAC00\uB2A5.",
+    params: { commandId: { type: "string", required: true }, scope: { type: "string" } },
+    returns: "{ commandId }",
+    handler: async (p) => {
+      if (typeof p.commandId !== "string") return err("INVALID_PARAMS", "commandId \uD544\uC694");
+      const scope = scopeOf(p);
+      const rec = await data.get(COMMANDS, p.commandId, {
+        scope
+      });
+      if (!rec) return err("TARGET_NOT_FOUND", "\uBA85\uB839 \uC5C6\uC74C");
+      await data.put(COMMANDS, { ...rec, deleted: true }, { scope, id: p.commandId });
+      return ok({ commandId: p.commandId });
+    }
+  });
+  reg("runbook.command.restore", {
+    description: "\uD734\uC9C0\uD1B5\uC758 \uBA85\uB839 \uBCF5\uC6D0(deleted=false).",
+    params: { commandId: { type: "string", required: true }, scope: { type: "string" } },
+    returns: "{ commandId }",
+    handler: async (p) => {
+      if (typeof p.commandId !== "string") return err("INVALID_PARAMS", "commandId \uD544\uC694");
+      const scope = scopeOf(p);
+      const rec = await data.get(COMMANDS, p.commandId, {
+        scope
+      });
+      if (!rec) return err("TARGET_NOT_FOUND", "\uBA85\uB839 \uC5C6\uC74C");
+      await data.put(COMMANDS, { ...rec, deleted: false }, { scope, id: p.commandId });
+      return ok({ commandId: p.commandId });
+    }
+  });
+  reg("runbook.command.duplicate", {
+    description: "\uBA85\uB839 \uBCF5\uC81C(\uC0C8 id, label \uC5D0 ' (\uBCF5\uC0AC)' \uC811\uBBF8, \uBE44\uD734\uC9C0\uD1B5\xB7order \uB9E8 \uB4A4).",
+    params: { commandId: { type: "string", required: true }, scope: { type: "string" } },
+    returns: "{ commandId }",
+    handler: async (p) => {
+      if (typeof p.commandId !== "string") return err("INVALID_PARAMS", "commandId \uD544\uC694");
+      const scope = scopeOf(p);
+      const rec = await data.get(COMMANDS, p.commandId, {
+        scope
+      });
+      if (!rec) return err("TARGET_NOT_FOUND", "\uBA85\uB839 \uC5C6\uC74C");
+      const order = await nextCommandOrder(data, scope);
+      const { id: _drop, ...rest } = rec;
+      const copy = {
+        ...rest,
+        label: rec.label + " (\uBCF5\uC0AC)",
+        deleted: false,
+        order
+      };
+      const commandId = await data.put(COMMANDS, copy, { scope });
+      return ok({ commandId });
+    }
+  });
+  reg("runbook.command.list", {
+    description: "\uBA85\uB839 \uBAA9\uB85D(order \uC21C). trash=true \uD734\uC9C0\uD1B5\uB9CC, favorite=true \uC990\uACA8\uCC3E\uAE30\uB9CC, groupId \uC9C0\uC815 \uC2DC \uD574\uB2F9 \uADF8\uB8F9.",
+    params: {
+      trash: { type: "boolean" },
+      favorite: { type: "boolean" },
+      groupId: { type: "string" },
+      limit: { type: "number" },
+      offset: { type: "number" },
+      scope: { type: "string" }
+    },
+    returns: "{ commands }",
+    handler: async (p) => {
+      const commands = await listCommands(data, {
+        scope: scopeOf(p),
+        trash: p.trash === true,
+        favorite: p.favorite === true,
+        groupId: typeof p.groupId === "string" ? p.groupId : void 0,
+        limit: typeof p.limit === "number" ? p.limit : void 0,
+        offset: typeof p.offset === "number" ? p.offset : void 0
+      });
+      return ok({ commands });
+    }
+  });
+  reg("runbook.command.search", {
+    description: "\uBA85\uB839 CJK \uC804\uBB38\uAC80\uC0C9(label\xB7command). \uD734\uC9C0\uD1B5 \uC81C\uC678.",
+    params: {
+      query: { type: "string", required: true },
+      limit: { type: "number" },
+      scope: { type: "string" }
+    },
+    returns: "{ commands }",
+    handler: async (p) => {
+      if (typeof p.query !== "string") return err("INVALID_PARAMS", "query \uD544\uC694");
+      const hits = await data.search(COMMANDS, p.query, {
+        scope: scopeOf(p),
+        limit: typeof p.limit === "number" ? p.limit : 100
+      });
+      return ok({ commands: hits.filter((c) => !c.deleted) });
+    }
+  });
+  reg("runbook.command.set-group", {
+    description: "\uBA85\uB839\uC744 \uB2E4\uB978 \uADF8\uB8F9\uC73C\uB85C \uC774\uB3D9.",
+    params: {
+      commandId: { type: "string", required: true },
+      groupId: { type: "string", required: true },
+      scope: { type: "string" }
+    },
+    returns: "{ commandId, groupId }",
+    handler: async (p) => {
+      if (typeof p.commandId !== "string" || typeof p.groupId !== "string")
+        return err("INVALID_PARAMS", "commandId\xB7groupId \uD544\uC694");
+      const scope = scopeOf(p);
+      const rec = await data.get(COMMANDS, p.commandId, {
+        scope
+      });
+      if (!rec) return err("TARGET_NOT_FOUND", "\uBA85\uB839 \uC5C6\uC74C");
+      await data.put(COMMANDS, { ...rec, groupId: p.groupId }, { scope, id: p.commandId });
+      return ok({ commandId: p.commandId, groupId: p.groupId });
+    }
+  });
+  reg("runbook.command.favorite", {
+    description: "\uC990\uACA8\uCC3E\uAE30 \uD1A0\uAE00(\uC788\uC73C\uBA74 \uD574\uC81C, \uC5C6\uC73C\uBA74 \uC124\uC815).",
+    params: { commandId: { type: "string", required: true }, scope: { type: "string" } },
+    returns: "{ commandId, favorite }",
+    handler: async (p) => {
+      if (typeof p.commandId !== "string") return err("INVALID_PARAMS", "commandId \uD544\uC694");
+      const scope = scopeOf(p);
+      const rec = await data.get(COMMANDS, p.commandId, {
+        scope
+      });
+      if (!rec) return err("TARGET_NOT_FOUND", "\uBA85\uB839 \uC5C6\uC74C");
+      const favorite = !rec.favorite;
+      await data.put(COMMANDS, { ...rec, favorite }, { scope, id: p.commandId });
+      return ok({ commandId: p.commandId, favorite });
+    }
+  });
+  reg("runbook.group.add", {
+    description: "\uADF8\uB8F9 \uCD94\uAC00. name \uD544\uC218, color(blue|red|green|orange|purple|gray) \uC0DD\uB7B5 \uC2DC gray.",
+    params: {
+      name: { type: "string", required: true },
+      color: { type: "string" },
+      scope: { type: "string" }
+    },
+    returns: "{ groupId }",
+    handler: async (p) => {
+      const scope = scopeOf(p);
+      const existing = await data.query(GROUPS, {
+        scope,
+        order: "order",
+        desc: true,
+        limit: 1
+      });
+      const order = existing.length ? (existing[0].order ?? 0) + 1 : 0;
+      const rec = makeGroup(p, order);
+      if (!rec) return err("INVALID_PARAMS", "name \uD544\uC694");
+      const groupId = await data.put(GROUPS, rec, { scope });
+      return ok({ groupId });
+    }
+  });
+  reg("runbook.group.update", {
+    description: "\uADF8\uB8F9 \uAC31\uC2E0(name\xB7color).",
+    params: {
+      groupId: { type: "string", required: true },
+      name: { type: "string" },
+      color: { type: "string" },
+      scope: { type: "string" }
+    },
+    returns: "{ groupId }",
+    handler: async (p) => {
+      if (typeof p.groupId !== "string") return err("INVALID_PARAMS", "groupId \uD544\uC694");
+      const scope = scopeOf(p);
+      const rec = await data.get(GROUPS, p.groupId, { scope });
+      if (!rec) return err("TARGET_NOT_FOUND", "\uADF8\uB8F9 \uC5C6\uC74C");
+      const next = { ...rec };
+      if (typeof p.name === "string" && p.name.trim() !== "") next.name = p.name;
+      const merged = makeGroup({ ...next, color: p.color ?? rec.color }, rec.order);
+      if (merged) next.color = merged.color;
+      await data.put(GROUPS, next, { scope, id: p.groupId });
+      return ok({ groupId: p.groupId });
+    }
+  });
+  reg("runbook.group.delete", {
+    description: "\uADF8\uB8F9 \uC0AD\uC81C(\uD558\uB4DC). \uC18C\uC18D \uBA85\uB839\uC740 \uAE30\uBCF8 \uADF8\uB8F9\uC73C\uB85C \uC7AC\uBC30\uCE58(\uACE0\uC544 \uBC29\uC9C0). \uAE30\uBCF8 \uADF8\uB8F9\uC740 \uBCF4\uC7A5 \uD6C4 \uC7AC\uC0DD\uC131.",
+    params: { groupId: { type: "string", required: true }, scope: { type: "string" } },
+    returns: "{ groupId, reassigned }",
+    handler: async (p) => {
+      if (typeof p.groupId !== "string") return err("INVALID_PARAMS", "groupId \uD544\uC694");
+      const scope = scopeOf(p);
+      const rec = await data.get(GROUPS, p.groupId, { scope });
+      if (!rec) return err("TARGET_NOT_FOUND", "\uADF8\uB8F9 \uC5C6\uC74C");
+      await data.delete(GROUPS, p.groupId, { scope });
+      const fallback = await ensureDefaultGroup(data, scope);
+      const orphans = await data.query(COMMANDS, {
+        scope,
+        where: { groupId: p.groupId },
+        limit: 1e5
+      });
+      for (const c of orphans)
+        await data.put(COMMANDS, { ...c, groupId: fallback }, { scope, id: c.id });
+      return ok({ groupId: p.groupId, reassigned: orphans.length });
+    }
+  });
+  reg("runbook.group.list", {
+    description: "\uADF8\uB8F9 \uBAA9\uB85D(order \uC21C). \uAE30\uBCF8 \uADF8\uB8F9\uC744 \uBCF4\uC7A5(\uC5C6\uC73C\uBA74 \uC0DD\uC131).",
+    params: { scope: { type: "string" } },
+    returns: "{ groups }",
+    handler: async (p) => {
+      const scope = scopeOf(p);
+      await ensureDefaultGroup(data, scope);
+      const groups = await data.query(GROUPS, {
+        scope,
+        order: "order",
+        desc: false,
+        limit: 1e3
+      });
+      return ok({ groups });
+    }
+  });
+  reg("runbook.history.add", {
+    description: "\uC2E4\uD589 \uD788\uC2A4\uD1A0\uB9AC 1\uAC74 \uAE30\uB85D(label\xB7command\xB7type \uD544\uC218, output\xB7statusCode\xB7commandId \uC120\uD0DD). \uC2E4\uD589\uAE30\uAC00 \uD6C4\uC18D\uC5D0 \uD638\uCD9C\uD558\uB098, \uD5E4\uB4DC\uB9AC\uC2A4 \uAC80\uC99D\uC6A9\uC73C\uB85C\uB3C4 \uB178\uCD9C.",
+    params: {
+      label: { type: "string", required: true },
+      command: { type: "string", required: true },
+      type: { type: "string", required: true },
+      output: { type: "string" },
+      statusCode: { type: "number" },
+      commandId: { type: "string" },
+      scope: { type: "string" }
+    },
+    returns: "{ historyId }",
+    handler: async (p) => {
+      if (typeof p.label !== "string" || typeof p.command !== "string" || typeof p.type !== "string")
+        return err("INVALID_PARAMS", "label\xB7command\xB7type \uD544\uC694");
+      const rec = makeHistory({
+        label: p.label,
+        command: p.command,
+        type: p.type,
+        output: typeof p.output === "string" ? p.output : void 0,
+        statusCode: typeof p.statusCode === "number" ? p.statusCode : void 0,
+        commandId: typeof p.commandId === "string" ? p.commandId : void 0
+      });
+      const historyId = await data.put(HISTORY, rec, { scope: scopeOf(p) });
+      return ok({ historyId });
+    }
+  });
+  reg("runbook.history.list", {
+    description: "\uD788\uC2A4\uD1A0\uB9AC \uBAA9\uB85D(\uCD5C\uC2E0\uC21C). trash=true \uD734\uC9C0\uD1B5\uB9CC, type \uC9C0\uC815 \uC2DC \uD574\uB2F9 \uC2E4\uD589\uD0C0\uC785\uB9CC.",
+    params: {
+      trash: { type: "boolean" },
+      type: { type: "string" },
+      limit: { type: "number" },
+      scope: { type: "string" }
+    },
+    returns: "{ history }",
+    handler: async (p) => {
+      const history = await listHistory(data, {
+        scope: scopeOf(p),
+        trash: p.trash === true,
+        type: typeof p.type === "string" ? p.type : void 0,
+        limit: typeof p.limit === "number" ? p.limit : void 0
+      });
+      return ok({ history });
+    }
+  });
+  reg("runbook.history.search", {
+    description: "\uD788\uC2A4\uD1A0\uB9AC CJK \uC804\uBB38\uAC80\uC0C9(label\xB7command\xB7output). \uD734\uC9C0\uD1B5 \uC81C\uC678.",
+    params: {
+      query: { type: "string", required: true },
+      limit: { type: "number" },
+      scope: { type: "string" }
+    },
+    returns: "{ history }",
+    handler: async (p) => {
+      if (typeof p.query !== "string") return err("INVALID_PARAMS", "query \uD544\uC694");
+      const hits = await data.search(HISTORY, p.query, {
+        scope: scopeOf(p),
+        limit: typeof p.limit === "number" ? p.limit : 100
+      });
+      return ok({ history: hits.filter((h) => !h.deleted) });
+    }
+  });
+  reg("runbook.history.delete", {
+    description: "\uD788\uC2A4\uD1A0\uB9AC 1\uAC74 \uD734\uC9C0\uD1B5\uC73C\uB85C(\uC18C\uD504\uD2B8 \uC0AD\uC81C).",
+    params: { historyId: { type: "string", required: true }, scope: { type: "string" } },
+    returns: "{ historyId }",
+    handler: async (p) => {
+      if (typeof p.historyId !== "string") return err("INVALID_PARAMS", "historyId \uD544\uC694");
+      const scope = scopeOf(p);
+      const rec = await data.get(HISTORY, p.historyId, {
+        scope
+      });
+      if (!rec) return err("TARGET_NOT_FOUND", "\uD788\uC2A4\uD1A0\uB9AC \uC5C6\uC74C");
+      await data.put(HISTORY, { ...rec, deleted: true }, { scope, id: p.historyId });
+      return ok({ historyId: p.historyId });
+    }
+  });
+  reg("runbook.history.restore", {
+    description: "\uD734\uC9C0\uD1B5\uC758 \uD788\uC2A4\uD1A0\uB9AC \uBCF5\uC6D0.",
+    params: { historyId: { type: "string", required: true }, scope: { type: "string" } },
+    returns: "{ historyId }",
+    handler: async (p) => {
+      if (typeof p.historyId !== "string") return err("INVALID_PARAMS", "historyId \uD544\uC694");
+      const scope = scopeOf(p);
+      const rec = await data.get(HISTORY, p.historyId, {
+        scope
+      });
+      if (!rec) return err("TARGET_NOT_FOUND", "\uD788\uC2A4\uD1A0\uB9AC \uC5C6\uC74C");
+      await data.put(HISTORY, { ...rec, deleted: false }, { scope, id: p.historyId });
+      return ok({ historyId: p.historyId });
+    }
+  });
+  reg("runbook.history.clear", {
+    description: "\uD788\uC2A4\uD1A0\uB9AC \uC804\uCCB4 \uC0AD\uC81C(\uD558\uB4DC). trashOnly=true \uBA74 \uD734\uC9C0\uD1B5\uB9CC.",
+    params: { trashOnly: { type: "boolean" }, scope: { type: "string" } },
+    returns: "{ deleted }",
+    handler: async (p) => {
+      const scope = scopeOf(p);
+      const all = await data.query(HISTORY, { scope, limit: 1e5 });
+      const targets = p.trashOnly === true ? all.filter((h) => h.deleted) : all;
+      for (const h of targets) if (h.id) await data.delete(HISTORY, h.id, { scope });
+      return ok({ deleted: targets.length });
+    }
+  });
+  reg("runbook.export", {
+    description: "\uB7F0\uBD81 \uC804\uCCB4(\uADF8\uB8F9\xB7\uBA85\uB839\xB7\uD788\uC2A4\uD1A0\uB9AC) JSONL \uB0B4\uBCF4\uB0B4\uAE30. \uAC01 \uC904 = { kind, doc }. \uD3C9\uBB38 \uC2DC\uD06C\uB9BF\uC740 \uC800\uC7A5\uD558\uC9C0 \uC54A\uC73C\uBBC0\uB85C export \uC5D0\uB3C4 \uB4F1\uC7A5\uD558\uC9C0 \uC54A\uB294\uB2E4(R2).",
+    params: { scope: { type: "string" } },
+    returns: "{ jsonl, counts }",
+    handler: async (p) => {
+      const scope = scopeOf(p);
+      const groups = await data.query(GROUPS, { scope, limit: 1e5 });
+      const commands = await data.query(COMMANDS, {
+        scope,
+        limit: 1e5
+      });
+      const history = await data.query(HISTORY, {
+        scope,
+        limit: 1e5
+      });
+      const lines = [];
+      for (const g of groups) lines.push(JSON.stringify({ kind: "group", doc: g }));
+      for (const c of commands) lines.push(JSON.stringify({ kind: "command", doc: c }));
+      for (const h of history) lines.push(JSON.stringify({ kind: "history", doc: h }));
+      return ok({
+        jsonl: lines.join("\n"),
+        counts: { groups: groups.length, commands: commands.length, history: history.length }
+      });
+    }
+  });
+  reg("runbook.import", {
+    description: "JSONL \uAC00\uC838\uC624\uAE30(export \uC5ED). \uAC01 \uC904 { kind, doc } \uB97C \uCEEC\uB809\uC158\uC5D0 put(id \uBCF4\uC874 = \uBA71\uB4F1 upsert).",
+    params: { jsonl: { type: "string", required: true }, scope: { type: "string" } },
+    returns: "{ imported }",
+    handler: async (p) => {
+      if (typeof p.jsonl !== "string") return err("INVALID_PARAMS", "jsonl \uD544\uC694");
+      const scope = scopeOf(p);
+      const coll = {
+        group: GROUPS,
+        command: COMMANDS,
+        history: HISTORY
+      };
+      let imported = 0;
+      for (const line of p.jsonl.split("\n")) {
+        const t = line.trim();
+        if (!t) continue;
+        let parsed;
+        try {
+          parsed = JSON.parse(t);
+        } catch {
+          return err("INVALID_PARAMS", "JSONL \uD30C\uC2F1 \uC2E4\uD328");
+        }
+        const c = parsed.kind ? coll[parsed.kind] : void 0;
+        if (!c || !parsed.doc) continue;
+        const id = typeof parsed.doc.id === "string" ? parsed.doc.id : void 0;
+        await data.put(c, parsed.doc, { scope, id });
+        imported++;
+      }
+      return ok({ imported });
+    }
+  });
+}
+
 // src/index.ts
-var COLL = "runbooks";
 var index_default = {
   async activate(ctx) {
     const app = ctx.app;
     const sub = (d) => ctx.subscriptions.push(d);
-    await app.data?.define(COLL, {
-      indexes: ["name", "kind"],
-      fts: ["name", "template"]
-    });
-    if (app.commands) {
-      sub(
-        app.commands.register("ref.parse", {
-          description: "Reference \uD15C\uD50C\uB9BF\uC744 \uD30C\uC2F1\uD574 \uB178\uB4DC\uC640 \uCD94\uCD9C\uB41C Reference \uBAA9\uB85D\uC744 \uBC18\uD658(\uC5D4\uC9C4 \uAC80\uC99D).",
-          handler: (params) => {
-            const template = String(params.template ?? "");
-            return parse(template);
-          }
-        })
-      );
-      sub(
-        app.commands.register("ref.resolve", {
-          description: "Reference \uD15C\uD50C\uB9BF\uC744 \uC8FC\uC5B4\uC9C4 context \uB85C \uD574\uC11D\uD574 \uD14D\uC2A4\uD2B8\xB7\uC5D0\uB7EC\xB7\uC2DC\uD06C\uB9BF \uD578\uB4E4\uC744 \uBC18\uD658(\uC5D4\uC9C4 \uAC80\uC99D).",
-          handler: (params) => {
-            const template = String(params.template ?? "");
-            const ctxIn = params.context ?? {};
-            return resolve(parse(template), ctxIn);
-          }
-        })
-      );
+    if (!app.data || !app.commands) {
+      return;
     }
+    const data = app.data;
+    const cmds = app.commands;
+    await defineCollections(data);
+    for (const coll of [COMMANDS, GROUPS, HISTORY]) {
+      sub(data.watch(coll, void 0, () => {
+      }));
+    }
+    registerCommands(data, cmds, sub);
+    sub(
+      cmds.register("ref.parse", {
+        description: "Reference \uD15C\uD50C\uB9BF\uC744 \uD30C\uC2F1\uD574 \uB178\uB4DC\uC640 \uCD94\uCD9C\uB41C Reference \uBAA9\uB85D\uC744 \uBC18\uD658(\uC5D4\uC9C4 \uAC80\uC99D).",
+        params: { template: { type: "string", required: true } },
+        returns: "{ nodes, refs }",
+        handler: (p) => parse(String(p.template ?? ""))
+      })
+    );
+    sub(
+      cmds.register("ref.resolve", {
+        description: "Reference \uD15C\uD50C\uB9BF\uC744 \uC8FC\uC5B4\uC9C4 context \uB85C \uD574\uC11D\uD574 \uD14D\uC2A4\uD2B8\xB7\uC5D0\uB7EC\xB7\uC2DC\uD06C\uB9BF \uD578\uB4E4\uC744 \uBC18\uD658(\uC5D4\uC9C4 \uAC80\uC99D). \uD3C9\uBB38 \uC2DC\uD06C\uB9BF \uBBF8\uC218\uC2E0 \u2014 secretNs \uB9CC.",
+        params: { template: { type: "string", required: true }, context: { type: "object" } },
+        returns: "{ text, errors, handles }",
+        handler: (p) => resolve(parse(String(p.template ?? "")), p.context ?? {})
+      })
+    );
+  },
+  deactivate() {
   }
 };
 export {

@@ -1,0 +1,551 @@
+// 런북 CRUD 커맨드 — 전 기능 노출(R7: UI 없이 E2E 전부). 반환은 {ok:true,...}/{ok:false,code,
+// message}. bare id 키 금지 — commandId/groupId/historyId 식으로 명시. 데이터 변경은 app.data
+// 가 전 창 watch 로 동기화(폴링 0). 실제 실행기·secretRef 주입·배지 UI 는 후속 범위.
+
+import {
+  COMMANDS,
+  GROUPS,
+  HISTORY,
+  makeCommand,
+  makeGroup,
+  makeHistory,
+  mergeCommand,
+  validateCommandInput,
+  type CommandRecord,
+  type GroupRecord,
+  type HistoryRecord,
+} from "../data/model";
+import {
+  ensureDefaultGroup,
+  extractRefs,
+  listCommands,
+  listHistory,
+  nextCommandOrder,
+  type DataApi,
+} from "../data/store";
+
+interface CommandsApi {
+  register: (
+    name: string,
+    spec: {
+      description: string;
+      params?: Record<string, unknown>;
+      returns?: string;
+      examples?: string[];
+      handler: (params: Record<string, unknown>) => unknown;
+    },
+  ) => { dispose: () => void };
+}
+
+type Disposable = { dispose: () => void };
+
+const ok = (extra: Record<string, unknown>) => ({ ok: true, ...extra });
+const err = (code: string, message: string) => ({ ok: false, code, message });
+const scopeOf = (p: Record<string, unknown>): string | undefined =>
+  typeof p.scope === "string" ? p.scope : undefined;
+
+/** 모든 CRUD 커맨드를 등록한다. dispose 들은 호출자(activate)가 subscriptions 에 담는다. */
+export function registerCommands(
+  data: DataApi,
+  cmds: CommandsApi,
+  sub: (d: Disposable) => void,
+): void {
+  const reg = (
+    name: string,
+    spec: Parameters<CommandsApi["register"]>[1],
+  ): void => sub(cmds.register(name, spec));
+
+  // ── 명령(command) CRUD ──
+
+  reg("runbook.command.add", {
+    description:
+      "런북 명령 추가. label·command(템플릿)·executionType(terminal|script|background|schedule|api) 필수. groupId 생략 시 기본 그룹. command 템플릿의 Reference 메타는 parse 로 추출·저장(검증용).",
+    params: {
+      label: { type: "string", required: true },
+      command: { type: "string", required: true, description: "실행 템플릿(Reference 토큰 포함 가능)" },
+      executionType: { type: "string", required: true },
+      groupId: { type: "string", description: "생략 시 기본 그룹" },
+      favorite: { type: "boolean" },
+      scope: { type: "string", description: "프로젝트 파티션(생략=전역)" },
+    },
+    returns: "{ commandId, refs }",
+    examples: [
+      'sok plugin.soksak-plugin-runbook.runbook.command.add \'{"label":"배포","command":"make deploy {env:dev|prod}","executionType":"script"}\'',
+    ],
+    handler: async (p) => {
+      const invalid = validateCommandInput(p);
+      if (invalid) return err("INVALID_PARAMS", invalid);
+      const scope = scopeOf(p);
+      const groupId =
+        typeof p.groupId === "string" && p.groupId
+          ? p.groupId
+          : await ensureDefaultGroup(data, scope);
+      const refs = extractRefs(String(p.command));
+      const order = await nextCommandOrder(data, scope);
+      const rec = makeCommand(p, { groupId, order, refs });
+      const commandId = await data.put(COMMANDS, rec, { scope });
+      return ok({ commandId, refs });
+    },
+  });
+
+  reg("runbook.command.get", {
+    description: "명령 1건 조회(Reference 메타 포함). 없으면 TARGET_NOT_FOUND.",
+    params: { commandId: { type: "string", required: true }, scope: { type: "string" } },
+    returns: "{ command }",
+    handler: async (p) => {
+      if (typeof p.commandId !== "string") return err("INVALID_PARAMS", "commandId 필요");
+      const rec = await data.get(COMMANDS, p.commandId, { scope: scopeOf(p) });
+      if (!rec) return err("TARGET_NOT_FOUND", "명령 없음");
+      return ok({ command: rec });
+    },
+  });
+
+  reg("runbook.command.refs", {
+    description: "명령의 command 템플릿을 parse 해 Reference 메타를 반환(검증·표시용 — 실행 아님).",
+    params: { commandId: { type: "string", required: true }, scope: { type: "string" } },
+    returns: "{ refs }",
+    handler: async (p) => {
+      if (typeof p.commandId !== "string") return err("INVALID_PARAMS", "commandId 필요");
+      const rec = (await data.get(COMMANDS, p.commandId, {
+        scope: scopeOf(p),
+      })) as CommandRecord | null;
+      if (!rec) return err("TARGET_NOT_FOUND", "명령 없음");
+      return ok({ refs: extractRefs(rec.command) });
+    },
+  });
+
+  reg("runbook.command.update", {
+    description:
+      "명령 갱신(전체교체 — 누락 필드는 기존 보존). command 변경 시 Reference 메타 재추출.",
+    params: {
+      commandId: { type: "string", required: true },
+      label: { type: "string" },
+      command: { type: "string" },
+      executionType: { type: "string" },
+      favorite: { type: "boolean" },
+      groupId: { type: "string" },
+      scope: { type: "string" },
+    },
+    returns: "{ commandId, refs }",
+    handler: async (p) => {
+      if (typeof p.commandId !== "string") return err("INVALID_PARAMS", "commandId 필요");
+      const scope = scopeOf(p);
+      const rec = (await data.get(COMMANDS, p.commandId, {
+        scope,
+      })) as CommandRecord | null;
+      if (!rec) return err("TARGET_NOT_FOUND", "명령 없음");
+      const refs =
+        typeof p.command === "string" ? extractRefs(p.command) : rec.refs;
+      const next = mergeCommand(rec, p, refs);
+      await data.put(COMMANDS, next, { scope, id: p.commandId });
+      return ok({ commandId: p.commandId, refs: next.refs ?? [] });
+    },
+  });
+
+  reg("runbook.command.delete", {
+    description: "명령 휴지통으로(소프트 삭제 — boolean deleted). 복원 가능.",
+    params: { commandId: { type: "string", required: true }, scope: { type: "string" } },
+    returns: "{ commandId }",
+    handler: async (p) => {
+      if (typeof p.commandId !== "string") return err("INVALID_PARAMS", "commandId 필요");
+      const scope = scopeOf(p);
+      const rec = (await data.get(COMMANDS, p.commandId, {
+        scope,
+      })) as CommandRecord | null;
+      if (!rec) return err("TARGET_NOT_FOUND", "명령 없음");
+      await data.put(COMMANDS, { ...rec, deleted: true }, { scope, id: p.commandId });
+      return ok({ commandId: p.commandId });
+    },
+  });
+
+  reg("runbook.command.restore", {
+    description: "휴지통의 명령 복원(deleted=false).",
+    params: { commandId: { type: "string", required: true }, scope: { type: "string" } },
+    returns: "{ commandId }",
+    handler: async (p) => {
+      if (typeof p.commandId !== "string") return err("INVALID_PARAMS", "commandId 필요");
+      const scope = scopeOf(p);
+      const rec = (await data.get(COMMANDS, p.commandId, {
+        scope,
+      })) as CommandRecord | null;
+      if (!rec) return err("TARGET_NOT_FOUND", "명령 없음");
+      await data.put(COMMANDS, { ...rec, deleted: false }, { scope, id: p.commandId });
+      return ok({ commandId: p.commandId });
+    },
+  });
+
+  reg("runbook.command.duplicate", {
+    description: "명령 복제(새 id, label 에 ' (복사)' 접미, 비휴지통·order 맨 뒤).",
+    params: { commandId: { type: "string", required: true }, scope: { type: "string" } },
+    returns: "{ commandId }",
+    handler: async (p) => {
+      if (typeof p.commandId !== "string") return err("INVALID_PARAMS", "commandId 필요");
+      const scope = scopeOf(p);
+      const rec = (await data.get(COMMANDS, p.commandId, {
+        scope,
+      })) as CommandRecord | null;
+      if (!rec) return err("TARGET_NOT_FOUND", "명령 없음");
+      const order = await nextCommandOrder(data, scope);
+      const { id: _drop, ...rest } = rec;
+      const copy: CommandRecord = {
+        ...rest,
+        label: rec.label + " (복사)",
+        deleted: false,
+        order,
+      };
+      const commandId = await data.put(COMMANDS, copy, { scope });
+      return ok({ commandId });
+    },
+  });
+
+  reg("runbook.command.list", {
+    description:
+      "명령 목록(order 순). trash=true 휴지통만, favorite=true 즐겨찾기만, groupId 지정 시 해당 그룹.",
+    params: {
+      trash: { type: "boolean" },
+      favorite: { type: "boolean" },
+      groupId: { type: "string" },
+      limit: { type: "number" },
+      offset: { type: "number" },
+      scope: { type: "string" },
+    },
+    returns: "{ commands }",
+    handler: async (p) => {
+      const commands = await listCommands(data, {
+        scope: scopeOf(p),
+        trash: p.trash === true,
+        favorite: p.favorite === true,
+        groupId: typeof p.groupId === "string" ? p.groupId : undefined,
+        limit: typeof p.limit === "number" ? p.limit : undefined,
+        offset: typeof p.offset === "number" ? p.offset : undefined,
+      });
+      return ok({ commands });
+    },
+  });
+
+  reg("runbook.command.search", {
+    description: "명령 CJK 전문검색(label·command). 휴지통 제외.",
+    params: {
+      query: { type: "string", required: true },
+      limit: { type: "number" },
+      scope: { type: "string" },
+    },
+    returns: "{ commands }",
+    handler: async (p) => {
+      if (typeof p.query !== "string") return err("INVALID_PARAMS", "query 필요");
+      const hits = (await data.search(COMMANDS, p.query, {
+        scope: scopeOf(p),
+        limit: typeof p.limit === "number" ? p.limit : 100,
+      })) as CommandRecord[];
+      return ok({ commands: hits.filter((c) => !c.deleted) });
+    },
+  });
+
+  reg("runbook.command.set-group", {
+    description: "명령을 다른 그룹으로 이동.",
+    params: {
+      commandId: { type: "string", required: true },
+      groupId: { type: "string", required: true },
+      scope: { type: "string" },
+    },
+    returns: "{ commandId, groupId }",
+    handler: async (p) => {
+      if (typeof p.commandId !== "string" || typeof p.groupId !== "string")
+        return err("INVALID_PARAMS", "commandId·groupId 필요");
+      const scope = scopeOf(p);
+      const rec = (await data.get(COMMANDS, p.commandId, {
+        scope,
+      })) as CommandRecord | null;
+      if (!rec) return err("TARGET_NOT_FOUND", "명령 없음");
+      await data.put(COMMANDS, { ...rec, groupId: p.groupId }, { scope, id: p.commandId });
+      return ok({ commandId: p.commandId, groupId: p.groupId });
+    },
+  });
+
+  reg("runbook.command.favorite", {
+    description: "즐겨찾기 토글(있으면 해제, 없으면 설정).",
+    params: { commandId: { type: "string", required: true }, scope: { type: "string" } },
+    returns: "{ commandId, favorite }",
+    handler: async (p) => {
+      if (typeof p.commandId !== "string") return err("INVALID_PARAMS", "commandId 필요");
+      const scope = scopeOf(p);
+      const rec = (await data.get(COMMANDS, p.commandId, {
+        scope,
+      })) as CommandRecord | null;
+      if (!rec) return err("TARGET_NOT_FOUND", "명령 없음");
+      const favorite = !rec.favorite;
+      await data.put(COMMANDS, { ...rec, favorite }, { scope, id: p.commandId });
+      return ok({ commandId: p.commandId, favorite });
+    },
+  });
+
+  // ── 그룹(group) CRUD ──
+
+  reg("runbook.group.add", {
+    description: "그룹 추가. name 필수, color(blue|red|green|orange|purple|gray) 생략 시 gray.",
+    params: {
+      name: { type: "string", required: true },
+      color: { type: "string" },
+      scope: { type: "string" },
+    },
+    returns: "{ groupId }",
+    handler: async (p) => {
+      const scope = scopeOf(p);
+      const existing = (await data.query(GROUPS, {
+        scope,
+        order: "order",
+        desc: true,
+        limit: 1,
+      })) as GroupRecord[];
+      const order = existing.length ? (existing[0].order ?? 0) + 1 : 0;
+      const rec = makeGroup(p, order);
+      if (!rec) return err("INVALID_PARAMS", "name 필요");
+      const groupId = await data.put(GROUPS, rec, { scope });
+      return ok({ groupId });
+    },
+  });
+
+  reg("runbook.group.update", {
+    description: "그룹 갱신(name·color).",
+    params: {
+      groupId: { type: "string", required: true },
+      name: { type: "string" },
+      color: { type: "string" },
+      scope: { type: "string" },
+    },
+    returns: "{ groupId }",
+    handler: async (p) => {
+      if (typeof p.groupId !== "string") return err("INVALID_PARAMS", "groupId 필요");
+      const scope = scopeOf(p);
+      const rec = (await data.get(GROUPS, p.groupId, { scope })) as GroupRecord | null;
+      if (!rec) return err("TARGET_NOT_FOUND", "그룹 없음");
+      const next: GroupRecord = { ...rec };
+      if (typeof p.name === "string" && p.name.trim() !== "") next.name = p.name;
+      const merged = makeGroup({ ...next, color: p.color ?? rec.color }, rec.order);
+      if (merged) next.color = merged.color;
+      await data.put(GROUPS, next, { scope, id: p.groupId });
+      return ok({ groupId: p.groupId });
+    },
+  });
+
+  reg("runbook.group.delete", {
+    description:
+      "그룹 삭제(하드). 소속 명령은 기본 그룹으로 재배치(고아 방지). 기본 그룹은 보장 후 재생성.",
+    params: { groupId: { type: "string", required: true }, scope: { type: "string" } },
+    returns: "{ groupId, reassigned }",
+    handler: async (p) => {
+      if (typeof p.groupId !== "string") return err("INVALID_PARAMS", "groupId 필요");
+      const scope = scopeOf(p);
+      const rec = await data.get(GROUPS, p.groupId, { scope });
+      if (!rec) return err("TARGET_NOT_FOUND", "그룹 없음");
+      // 삭제 대상이 유일 그룹일 수 있으므로, 먼저 삭제 후 기본 그룹 보장(재생성)해 재배치 타깃 확보.
+      await data.delete(GROUPS, p.groupId, { scope });
+      const fallback = await ensureDefaultGroup(data, scope);
+      const orphans = (await data.query(COMMANDS, {
+        scope,
+        where: { groupId: p.groupId },
+        limit: 100000,
+      })) as CommandRecord[];
+      for (const c of orphans)
+        await data.put(COMMANDS, { ...c, groupId: fallback }, { scope, id: c.id });
+      return ok({ groupId: p.groupId, reassigned: orphans.length });
+    },
+  });
+
+  reg("runbook.group.list", {
+    description: "그룹 목록(order 순). 기본 그룹을 보장(없으면 생성).",
+    params: { scope: { type: "string" } },
+    returns: "{ groups }",
+    handler: async (p) => {
+      const scope = scopeOf(p);
+      await ensureDefaultGroup(data, scope);
+      const groups = (await data.query(GROUPS, {
+        scope,
+        order: "order",
+        desc: false,
+        limit: 1000,
+      })) as GroupRecord[];
+      return ok({ groups });
+    },
+  });
+
+  // ── 히스토리(history) ──
+
+  reg("runbook.history.add", {
+    description:
+      "실행 히스토리 1건 기록(label·command·type 필수, output·statusCode·commandId 선택). 실행기가 후속에 호출하나, 헤드리스 검증용으로도 노출.",
+    params: {
+      label: { type: "string", required: true },
+      command: { type: "string", required: true },
+      type: { type: "string", required: true },
+      output: { type: "string" },
+      statusCode: { type: "number" },
+      commandId: { type: "string" },
+      scope: { type: "string" },
+    },
+    returns: "{ historyId }",
+    handler: async (p) => {
+      if (
+        typeof p.label !== "string" ||
+        typeof p.command !== "string" ||
+        typeof p.type !== "string"
+      )
+        return err("INVALID_PARAMS", "label·command·type 필요");
+      const rec = makeHistory({
+        label: p.label,
+        command: p.command,
+        type: p.type as HistoryRecord["type"],
+        output: typeof p.output === "string" ? p.output : undefined,
+        statusCode: typeof p.statusCode === "number" ? p.statusCode : undefined,
+        commandId: typeof p.commandId === "string" ? p.commandId : undefined,
+      });
+      const historyId = await data.put(HISTORY, rec, { scope: scopeOf(p) });
+      return ok({ historyId });
+    },
+  });
+
+  reg("runbook.history.list", {
+    description: "히스토리 목록(최신순). trash=true 휴지통만, type 지정 시 해당 실행타입만.",
+    params: {
+      trash: { type: "boolean" },
+      type: { type: "string" },
+      limit: { type: "number" },
+      scope: { type: "string" },
+    },
+    returns: "{ history }",
+    handler: async (p) => {
+      const history = await listHistory(data, {
+        scope: scopeOf(p),
+        trash: p.trash === true,
+        type: typeof p.type === "string" ? p.type : undefined,
+        limit: typeof p.limit === "number" ? p.limit : undefined,
+      });
+      return ok({ history });
+    },
+  });
+
+  reg("runbook.history.search", {
+    description: "히스토리 CJK 전문검색(label·command·output). 휴지통 제외.",
+    params: {
+      query: { type: "string", required: true },
+      limit: { type: "number" },
+      scope: { type: "string" },
+    },
+    returns: "{ history }",
+    handler: async (p) => {
+      if (typeof p.query !== "string") return err("INVALID_PARAMS", "query 필요");
+      const hits = (await data.search(HISTORY, p.query, {
+        scope: scopeOf(p),
+        limit: typeof p.limit === "number" ? p.limit : 100,
+      })) as HistoryRecord[];
+      return ok({ history: hits.filter((h) => !h.deleted) });
+    },
+  });
+
+  reg("runbook.history.delete", {
+    description: "히스토리 1건 휴지통으로(소프트 삭제).",
+    params: { historyId: { type: "string", required: true }, scope: { type: "string" } },
+    returns: "{ historyId }",
+    handler: async (p) => {
+      if (typeof p.historyId !== "string") return err("INVALID_PARAMS", "historyId 필요");
+      const scope = scopeOf(p);
+      const rec = (await data.get(HISTORY, p.historyId, {
+        scope,
+      })) as HistoryRecord | null;
+      if (!rec) return err("TARGET_NOT_FOUND", "히스토리 없음");
+      await data.put(HISTORY, { ...rec, deleted: true }, { scope, id: p.historyId });
+      return ok({ historyId: p.historyId });
+    },
+  });
+
+  reg("runbook.history.restore", {
+    description: "휴지통의 히스토리 복원.",
+    params: { historyId: { type: "string", required: true }, scope: { type: "string" } },
+    returns: "{ historyId }",
+    handler: async (p) => {
+      if (typeof p.historyId !== "string") return err("INVALID_PARAMS", "historyId 필요");
+      const scope = scopeOf(p);
+      const rec = (await data.get(HISTORY, p.historyId, {
+        scope,
+      })) as HistoryRecord | null;
+      if (!rec) return err("TARGET_NOT_FOUND", "히스토리 없음");
+      await data.put(HISTORY, { ...rec, deleted: false }, { scope, id: p.historyId });
+      return ok({ historyId: p.historyId });
+    },
+  });
+
+  reg("runbook.history.clear", {
+    description: "히스토리 전체 삭제(하드). trashOnly=true 면 휴지통만.",
+    params: { trashOnly: { type: "boolean" }, scope: { type: "string" } },
+    returns: "{ deleted }",
+    handler: async (p) => {
+      const scope = scopeOf(p);
+      const all = (await data.query(HISTORY, { scope, limit: 100000 })) as HistoryRecord[];
+      const targets = p.trashOnly === true ? all.filter((h) => h.deleted) : all;
+      for (const h of targets) if (h.id) await data.delete(HISTORY, h.id, { scope });
+      return ok({ deleted: targets.length });
+    },
+  });
+
+  // ── export / import (JSONL 왕복) ──
+
+  reg("runbook.export", {
+    description:
+      "런북 전체(그룹·명령·히스토리) JSONL 내보내기. 각 줄 = { kind, doc }. 평문 시크릿은 저장하지 않으므로 export 에도 등장하지 않는다(R2).",
+    params: { scope: { type: "string" } },
+    returns: "{ jsonl, counts }",
+    handler: async (p) => {
+      const scope = scopeOf(p);
+      const groups = (await data.query(GROUPS, { scope, limit: 100000 })) as GroupRecord[];
+      const commands = (await data.query(COMMANDS, {
+        scope,
+        limit: 100000,
+      })) as CommandRecord[];
+      const history = (await data.query(HISTORY, {
+        scope,
+        limit: 100000,
+      })) as HistoryRecord[];
+      const lines: string[] = [];
+      for (const g of groups) lines.push(JSON.stringify({ kind: "group", doc: g }));
+      for (const c of commands) lines.push(JSON.stringify({ kind: "command", doc: c }));
+      for (const h of history) lines.push(JSON.stringify({ kind: "history", doc: h }));
+      return ok({
+        jsonl: lines.join("\n"),
+        counts: { groups: groups.length, commands: commands.length, history: history.length },
+      });
+    },
+  });
+
+  reg("runbook.import", {
+    description:
+      "JSONL 가져오기(export 역). 각 줄 { kind, doc } 를 컬렉션에 put(id 보존 = 멱등 upsert).",
+    params: { jsonl: { type: "string", required: true }, scope: { type: "string" } },
+    returns: "{ imported }",
+    handler: async (p) => {
+      if (typeof p.jsonl !== "string") return err("INVALID_PARAMS", "jsonl 필요");
+      const scope = scopeOf(p);
+      const coll: Record<string, string> = {
+        group: GROUPS,
+        command: COMMANDS,
+        history: HISTORY,
+      };
+      let imported = 0;
+      for (const line of p.jsonl.split("\n")) {
+        const t = line.trim();
+        if (!t) continue;
+        let parsed: { kind?: string; doc?: Record<string, unknown> };
+        try {
+          parsed = JSON.parse(t);
+        } catch {
+          return err("INVALID_PARAMS", "JSONL 파싱 실패");
+        }
+        const c = parsed.kind ? coll[parsed.kind] : undefined;
+        if (!c || !parsed.doc) continue;
+        const id = typeof parsed.doc.id === "string" ? parsed.doc.id : undefined;
+        await data.put(c, parsed.doc, { scope, id });
+        imported++;
+      }
+      return ok({ imported });
+    },
+  });
+}
