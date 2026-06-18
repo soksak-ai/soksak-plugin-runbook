@@ -23,6 +23,22 @@ interface CommandsApi {
       handler: (params: Record<string, unknown>) => unknown;
     },
   ) => Disposable;
+  execute?: (
+    name: string,
+    params?: Record<string, unknown>,
+  ) => Promise<{ ok: boolean; code?: string; message?: string; [k: string]: unknown }>;
+}
+
+interface ProcessApi {
+  spawn: (
+    cmd: string,
+    args: string[],
+    opts?: { cwd?: string; env?: Record<string, string>; envRemove?: string[] },
+  ) => Promise<number>;
+  onData: (handle: number, cb: (data: Uint8Array) => void) => Disposable;
+  onStderr: (handle: number, cb: (data: Uint8Array) => void) => Disposable;
+  onExit: (handle: number, cb: (code: number) => void) => Disposable;
+  kill: (handle: number) => Promise<void>;
 }
 
 interface PluginContext {
@@ -30,6 +46,7 @@ interface PluginContext {
     pluginId: string;
     data?: DataApi;
     commands?: CommandsApi;
+    process?: ProcessApi;
   };
   subscriptions: Disposable[];
 }
@@ -54,8 +71,15 @@ export default {
       sub(data.watch(coll, undefined, () => {}));
     }
 
-    // CRUD 커맨드 등록(전 기능 노출 R7).
-    registerCommands(data, cmds, sub);
+    // CRUD + 실행 커맨드 등록(전 기능 노출 R7). 실행 엔진은 셸 spawn(app.process)·터미널(term.exec
+    // via app.commands.execute) 을 쓴다 — 권한 미선언 시 표면이 undefined → 엔진이 NO_RUNTIME 명시 거부.
+    const execFn = cmds.execute;
+    registerCommands(data, cmds, sub, {
+      process: app.process,
+      execute: execFn
+        ? { execute: (name, params) => execFn(name, params) }
+        : undefined,
+    });
 
     // ── Reference 엔진 검증 노출(엔진 자체 단언용 — parse/resolve 순수 코어). ──
     sub(
