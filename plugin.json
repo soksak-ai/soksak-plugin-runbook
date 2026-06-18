@@ -22,6 +22,89 @@
     "secrets"
   ],
   "contributes": {
+    "views": [
+      {
+        "id": "runbook",
+        "title": {
+          "ko": "런북",
+          "en": "Runbook"
+        },
+        "icon": "📓",
+        "placements": [
+          "sidebar-right"
+        ]
+      }
+    ],
+    "nodes": [
+      {
+        "id": "search-input",
+        "description": "명령 검색 입력"
+      },
+      {
+        "id": "group-select",
+        "description": "그룹 필터 선택"
+      },
+      {
+        "id": "command-add",
+        "description": "명령 추가 버튼"
+      },
+      {
+        "id": "command-row",
+        "description": "명령 목록 행"
+      },
+      {
+        "id": "run-button",
+        "description": "명령 실행 버튼"
+      },
+      {
+        "id": "command-fav",
+        "description": "즐겨찾기 토글 버튼"
+      },
+      {
+        "id": "command-edit",
+        "description": "명령 편집 버튼/폼"
+      },
+      {
+        "id": "command-del",
+        "description": "명령 삭제 버튼"
+      },
+      {
+        "id": "command-form",
+        "description": "명령 추가 폼"
+      },
+      {
+        "id": "form-label",
+        "description": "폼 라벨 입력"
+      },
+      {
+        "id": "form-exec",
+        "description": "폼 실행 타입 선택"
+      },
+      {
+        "id": "form-save",
+        "description": "폼 저장 버튼"
+      },
+      {
+        "id": "form-cancel",
+        "description": "폼 취소 버튼"
+      },
+      {
+        "id": "command-input",
+        "description": "인라인 배지 입력 에디터(contenteditable 템플릿)"
+      },
+      {
+        "id": "badge",
+        "description": "원자 배지 span(토큰 type#label)"
+      },
+      {
+        "id": "suggestions",
+        "description": "자동완성 드롭다운"
+      },
+      {
+        "id": "suggestion-item",
+        "description": "자동완성 후보 항목"
+      }
+    ],
     "commands": [
       {
         "name": "runbook.command.add",
@@ -126,6 +209,14 @@
       {
         "name": "ref.resolve",
         "title": "Reference 해석(엔진 검증)"
+      },
+      {
+        "name": "runbook.editor.tokens",
+        "title": "에디터 토큰 역직렬화(헤드리스)"
+      },
+      {
+        "name": "runbook.editor.serialize",
+        "title": "에디터 직렬화(헤드리스)"
       }
     ]
   }
