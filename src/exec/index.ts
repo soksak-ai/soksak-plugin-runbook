@@ -7,6 +7,7 @@ export {
   type RunInput,
   type RunResult,
   type ExecuteApi,
+  type NetworkApi,
   type SecretsProbe,
 } from "./engine";
 export { planLink, type LinkPlan, type LinkOutcome } from "./link";

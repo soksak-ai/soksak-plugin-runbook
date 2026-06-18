@@ -6,6 +6,7 @@ import {
   COMMANDS,
   GROUPS,
   HISTORY,
+  commandRefText,
   makeCommand,
   makeGroup,
   makeHistory,
@@ -26,6 +27,7 @@ import {
 import {
   runCommand,
   type ExecuteApi,
+  type NetworkApi,
   type ProcessApi,
   type SecretsProbe,
 } from "../exec/index";
@@ -58,6 +60,8 @@ export interface RuntimeApis {
   secretNs?: string;
   /** secret 가용성 프로브(app.secrets) — 셸 실행 전 SECRET_PENDING 게이트용. 평문 아님(has 만). */
   secrets?: SecretsProbe;
+  /** HTTP 실행 표면(app.network.http) — api 실행타입용. 미주입 + api 면 NO_RUNTIME. */
+  network?: NetworkApi;
 }
 
 /** 모든 CRUD + 실행 커맨드를 등록한다. dispose 들은 호출자(activate)가 subscriptions 에 담는다. */
@@ -79,15 +83,22 @@ export function registerCommands(
       "런북 명령 추가. label·command(템플릿)·executionType(terminal|script|background|schedule|api) 필수. groupId 생략 시 기본 그룹. command 템플릿의 Reference 메타는 parse 로 추출·저장(검증용).",
     params: {
       label: { type: "string", required: true },
-      command: { type: "string", required: true, description: "실행 템플릿(Reference 토큰 포함 가능)" },
+      command: { type: "string", description: "실행 템플릿(셸 타입 — Reference 토큰 가능). api 는 url 사용" },
       executionType: { type: "string", required: true },
       groupId: { type: "string", description: "생략 시 기본 그룹" },
       favorite: { type: "boolean" },
+      url: { type: "string", description: "api: 요청 URL(Reference 토큰 가능)" },
+      httpMethod: { type: "string", description: "api: GET|POST|PUT|DELETE|PATCH(생략 GET)" },
+      headers: { type: "object", description: "api: 요청 헤더 맵(값에 Reference·시크릿 토큰 가능)" },
+      queryParams: { type: "object", description: "api: 쿼리 파라미터 맵" },
+      bodyType: { type: "string", description: "api: none|json|form(multipart 후속)" },
+      bodyData: { type: "string", description: "api: 요청 바디(Reference 토큰 가능)" },
       scope: { type: "string", description: "프로젝트 파티션(생략=전역)" },
     },
     returns: "{ commandId, refs }",
     examples: [
       'sok plugin.soksak-plugin-runbook.runbook.command.add \'{"label":"배포","command":"make deploy {env:dev|prod}","executionType":"script"}\'',
+      'sok plugin.soksak-plugin-runbook.runbook.command.add \'{"label":"핑","executionType":"api","httpMethod":"GET","url":"https://api.example.com/v1/ping"}\'',
     ],
     handler: async (p) => {
       const invalid = validateCommandInput(p);
@@ -97,9 +108,11 @@ export function registerCommands(
         typeof p.groupId === "string" && p.groupId
           ? p.groupId
           : await ensureDefaultGroup(data, scope);
-      const refs = extractRefs(String(p.command));
       const order = await nextCommandOrder(data, scope);
-      const rec = makeCommand(p, { groupId, order, refs });
+      const rec = makeCommand(p, { groupId, order });
+      // refs 메타는 실행 대상 텍스트(api=url/headers/query/body, 그 외=command)에서 추출(단일 진실).
+      const refs = extractRefs(commandRefText(rec));
+      if (refs.length > 0) rec.refs = refs;
       const commandId = await data.put(COMMANDS, rec, { scope });
       return ok({ commandId, refs });
     },
@@ -127,7 +140,7 @@ export function registerCommands(
         scope: scopeOf(p),
       })) as CommandRecord | null;
       if (!rec) return err("TARGET_NOT_FOUND", "명령 없음");
-      return ok({ refs: extractRefs(rec.command) });
+      return ok({ refs: extractRefs(commandRefText(rec)) });
     },
   });
 
@@ -141,6 +154,12 @@ export function registerCommands(
       executionType: { type: "string" },
       favorite: { type: "boolean" },
       groupId: { type: "string" },
+      url: { type: "string", description: "api: 요청 URL" },
+      httpMethod: { type: "string", description: "api: GET|POST|PUT|DELETE|PATCH" },
+      headers: { type: "object", description: "api: 요청 헤더 맵" },
+      queryParams: { type: "object", description: "api: 쿼리 파라미터 맵" },
+      bodyType: { type: "string", description: "api: none|json|form" },
+      bodyData: { type: "string", description: "api: 요청 바디" },
       scope: { type: "string" },
     },
     returns: "{ commandId, refs }",
@@ -151,11 +170,13 @@ export function registerCommands(
         scope,
       })) as CommandRecord | null;
       if (!rec) return err("TARGET_NOT_FOUND", "명령 없음");
-      const refs =
-        typeof p.command === "string" ? extractRefs(p.command) : rec.refs;
-      const next = mergeCommand(rec, p, refs);
+      const next = mergeCommand(rec, p);
+      // 갱신 후 실행 대상 텍스트(api=url/headers/query/body, 그 외=command)에서 refs 재추출 —
+      // command 뿐 아니라 url/headers 변경도 반영(단일 진실).
+      const refs = extractRefs(commandRefText(next));
+      next.refs = refs;
       await data.put(COMMANDS, next, { scope, id: p.commandId });
-      return ok({ commandId: p.commandId, refs: next.refs ?? [] });
+      return ok({ commandId: p.commandId, refs });
     },
   });
 
@@ -324,7 +345,13 @@ export function registerCommands(
           ? (p.env as Record<string, string>)
           : undefined;
       const result = await runCommand(
-        { data, process: runtime.process, commands: runtime.execute, secrets: runtime.secrets },
+        {
+          data,
+          process: runtime.process,
+          commands: runtime.execute,
+          secrets: runtime.secrets,
+          network: runtime.network,
+        },
         { commandId: p.commandId, scope: scopeOf(p), inputs, env, secretNs: runtime.secretNs },
       );
       // RunResult 는 이미 {ok,...} 형태 — 그대로 반환(code 명시 전파 R4).

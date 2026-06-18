@@ -12,7 +12,13 @@
 //   6. 타입별 실행: script/background = runShell(셸 -c), terminal = term.exec 코어 명령.
 //   7. 결과를 레코드에 lastOutput/lastStatusCode/lastExecutedAt 갱신(put) + history.add 연동.
 
-import { COMMANDS, HISTORY, makeHistory, type CommandRecord } from "../data/model";
+import {
+  COMMANDS,
+  HISTORY,
+  commandRefText,
+  makeHistory,
+  type CommandRecord,
+} from "../data/model";
 import type { DataApi } from "../data/store";
 import { parse, resolve, type ResolveContext, type SecretHandle } from "../refs/index";
 import { planLink } from "./link";
@@ -51,6 +57,20 @@ export interface ExecuteApi {
   ) => Promise<{ ok: boolean; code?: string; message?: string; [k: string]: unknown }>;
 }
 
+/** HTTP 실행 표면(app.network.http). api 실행타입용. secretSubst=placeholder→secretKey(이 플러그인 ns).
+ *  평문은 JS 가 안 만진다 — Rust 경계가 볼트에서 해소해 url/headers/body 에 치환(history/응답 무노출 R2). */
+export interface NetworkApi {
+  http: (req: {
+    method: string;
+    url: string;
+    headers?: Record<string, string>;
+    query?: Record<string, string>;
+    body?: string;
+    contentType?: string;
+    secretSubst?: Record<string, string>;
+  }) => Promise<{ status: number; headers: Record<string, string>; body: string }>;
+}
+
 /** secret 가용성 프로브 — 해당 ns(이 플러그인)에 key 가 실제로 있고 볼트가 언락됐는지(boolean).
  *  평문 0 — has 는 존재 여부만 반환한다(R2). app.secrets.has 가 그대로 들어온다. 볼트 잠김이면 reject. */
 export interface SecretsProbe {
@@ -61,6 +81,8 @@ export interface RunDeps {
   data: DataApi;
   process?: ProcessApi;
   commands?: ExecuteApi;
+  /** api 실행타입의 HTTP 표면(app.network.http). 미주입(권한 없음) + api 면 NO_RUNTIME. */
+  network?: NetworkApi;
   /** 미주입(권한 없음) + secret 참조면 SECRET_PENDING. 셸 실행 전 가용성 게이트에만 쓴다. */
   secrets?: SecretsProbe;
 }
@@ -78,7 +100,7 @@ export interface RunInput {
 }
 
 export type RunResult =
-  | { ok: true; output: string; exitCode: number; historyId?: string }
+  | { ok: true; output: string; exitCode: number; historyId?: string; statusCode?: number }
   | { ok: false; code: "TARGET_NOT_FOUND"; message: string }
   | { ok: false; code: "CYCLE"; cycle: string[] }
   | { ok: false; code: "UNRESOLVED"; unresolved: string[] }
@@ -105,7 +127,130 @@ function resolveTemplate(
   };
 }
 
-/** 실행 엔진 단일 진입(R8). 링킹 → resolve → 타입별 실행 → 결과 되먹임. */
+/** secret 핸들 → secretSubst 맵(marker→secretKey). app.network.http 가 Rust 경계에서 치환(평문 0 R2).
+ *  resolve 가 남긴 \0secret:<key>\0 마커를 그대로 두고 그 마커→key 만 넘긴다 — 셸의 applySecretEnv 와
+ *  달리 env 플레이스홀더 변환이 없다(HTTP 는 셸 확장이 없어 Rust 가 리터럴 치환). 같은 key 는 1엔트리. */
+function applySecretSubst(handles: SecretHandle[]): Record<string, string> {
+  const subst: Record<string, string> = {};
+  for (const h of handles) subst[`\0secret:${h.key}\0`] = h.key;
+  return subst;
+}
+
+/** bodyType → Content-Type. none/json/form 지원. multipart(파일 업로드)는 후속(executeNode 가 명시 거부). */
+function bodyContentType(bodyType: string | undefined): string | undefined {
+  switch (bodyType) {
+    case "json":
+      return "application/json";
+    case "form":
+      return "application/x-www-form-urlencoded";
+    default:
+      return undefined;
+  }
+}
+
+/** 한 노드 실행 결과. stdout=링킹 되먹임 값(jsonPath 추출 대상), output=표시·history 값. statusCode=api HTTP. */
+type NodeResult =
+  | { ok: true; stdout: string; output: string; exitCode: number; statusCode?: number }
+  | { ok: false; code: "UNRESOLVED"; unresolved: string[] }
+  | { ok: false; code: "NO_RUNTIME" | "EXEC_ERROR"; message: string };
+
+/** 한 노드(루트 또는 링킹 참조)를 자기 타입으로 실행한다 — 링킹 루프·루트가 공유(R8 단일 실행기).
+ *  script/background=셸(stdout 캡처), api=HTTP(app.network.http, 응답 바디 캡처), terminal=term.exec
+ *  (루트 전용 — 출력 캡처 없어 링킹 참조 불가). schedule 은 후속(마일스톤 B). */
+async function executeNode(
+  deps: RunDeps,
+  rec: CommandRecord,
+  ctx: ResolveContext,
+  isRoot: boolean,
+): Promise<NodeResult> {
+  const type = rec.executionType;
+
+  if (type === "script" || type === "background") {
+    const proc = deps.process;
+    if (!proc) return { ok: false, code: "NO_RUNTIME", message: "process 표면 없음 — 셸 실행 불가" };
+    const { text, unresolved, handles } = resolveTemplate(rec.command, ctx);
+    if (unresolved.length > 0) return { ok: false, code: "UNRESOLVED", unresolved };
+    const sub = applySecretEnv(text, handles);
+    try {
+      const r = await runShell(proc, sub.text, { secretEnv: sub.secretEnv });
+      return { ok: true, stdout: r.stdout, output: r.output, exitCode: r.exitCode };
+    } catch (e) {
+      return { ok: false, code: "EXEC_ERROR", message: e instanceof Error ? e.message : String(e) };
+    }
+  }
+
+  if (type === "api") {
+    const net = deps.network;
+    if (!net) return { ok: false, code: "NO_RUNTIME", message: "network 표면 없음 — HTTP 실행 불가" };
+    if (rec.bodyType === "multipart") {
+      return { ok: false, code: "NO_RUNTIME", message: "multipart(파일 업로드)는 후속 — none/json/form 지원" };
+    }
+    // url/headers/query/body 각각 Reference 해소(단일 엔진). secret 핸들 수집 → secretSubst(평문 0 R2).
+    const unresolved: string[] = [];
+    const handles: SecretHandle[] = [];
+    const resolveF = (t: string | undefined): string => {
+      if (!t) return "";
+      const r = resolveTemplate(t, ctx);
+      if (r.unresolved.length > 0) unresolved.push(...r.unresolved);
+      handles.push(...r.handles);
+      return r.text;
+    };
+    const url = resolveF(rec.url);
+    const headers: Record<string, string> = {};
+    for (const [k, v] of Object.entries(rec.headers ?? {})) headers[k] = resolveF(v);
+    const query: Record<string, string> = {};
+    for (const [k, v] of Object.entries(rec.queryParams ?? {})) query[k] = resolveF(v);
+    const body = rec.bodyData ? resolveF(rec.bodyData) : undefined;
+    if (unresolved.length > 0) return { ok: false, code: "UNRESOLVED", unresolved };
+    const secretSubst = applySecretSubst(handles);
+    try {
+      const resp = await net.http({
+        method: rec.httpMethod ?? "GET",
+        url,
+        headers,
+        query,
+        body,
+        contentType: bodyContentType(rec.bodyType),
+        secretSubst: Object.keys(secretSubst).length > 0 ? secretSubst : undefined,
+      });
+      // 되먹임=응답 바디(jsonPath 추출 대상). 표시=[status] body. exitCode: 4xx/5xx=1, 그 외 0.
+      return {
+        ok: true,
+        stdout: resp.body,
+        output: `[${resp.status}] ${resp.body}`,
+        exitCode: resp.status >= 400 ? 1 : 0,
+        statusCode: resp.status,
+      };
+    } catch (e) {
+      return { ok: false, code: "EXEC_ERROR", message: e instanceof Error ? e.message : String(e) };
+    }
+  }
+
+  if (type === "terminal") {
+    if (!isRoot) {
+      return { ok: false, code: "EXEC_ERROR", message: "terminal 은 링킹 참조 대상 불가(출력 캡처 없음)" };
+    }
+    const cmds = deps.commands;
+    if (!cmds) return { ok: false, code: "NO_RUNTIME", message: "commands 표면 없음 — 터미널 실행 불가" };
+    const { text, unresolved, handles } = resolveTemplate(rec.command, ctx);
+    if (unresolved.length > 0) return { ok: false, code: "UNRESOLVED", unresolved };
+    // terminal+secret 은 진입 전 게이트(SECRET_PENDING)로 막혔다 — 여기 handles 엔 secret 없음.
+    const sub = applySecretEnv(text, handles);
+    const r = await cmds.execute("term.exec", { cmd: sub.text });
+    if (!r.ok) {
+      return { ok: false, code: "EXEC_ERROR", message: r.message ?? `term.exec 실패: ${r.code ?? ""}` };
+    }
+    return { ok: true, stdout: "", output: `터미널 실행: ${sub.text}`, exitCode: 0 };
+  }
+
+  return {
+    ok: false,
+    code: "NO_RUNTIME",
+    message: `실행타입 ${type} 은 후속 범위(schedule = 마일스톤 B).`,
+  };
+}
+
+/** 실행 엔진 단일 진입(R8). 링킹 → resolve → 타입별 실행(executeNode) → 결과 되먹임. */
 export async function runCommand(
   deps: RunDeps,
   input: RunInput,
@@ -117,9 +262,10 @@ export async function runCommand(
   const root = (await data.get(COMMANDS, input.commandId, { scope })) as CommandRecord | null;
   if (!root) return { ok: false, code: "TARGET_NOT_FOUND", message: "명령 없음" };
 
-  // 본문 로더 — 참조 command 의 템플릿을 동기적으로 줘야 planLink 가 순수하게 돈다. 닫힘을 먼저
-  // 비동기로 적재한 뒤 맵에서 꺼낸다(2-pass): pass1 = 참조 id 수집·레코드 적재, pass2 = 순수 plan.
-  const templates = new Map<string, string>([[input.commandId, root.command]]);
+  // 본문 로더 — 참조 command 의 Reference 보유 텍스트(api 면 url/headers/query/body)를 동기적으로 줘야
+  // planLink 가 순수하게 돈다. 닫힘을 먼저 비동기로 적재한 뒤 맵에서 꺼낸다(2-pass): pass1 = 참조 id
+  // 수집·레코드 적재, pass2 = 순수 plan. templates = closure 스캔용(commandRefText), 실행은 records.
+  const templates = new Map<string, string>([[input.commandId, commandRefText(root)]]);
   const records = new Map<string, CommandRecord>([[input.commandId, root]]);
   // 참조 닫힘 적재(BFS — 중복 로드 0).
   const seen = new Set<string>([input.commandId]);
@@ -133,14 +279,14 @@ export async function runCommand(
       seen.add(r.key);
       const rec = (await data.get(COMMANDS, r.key, { scope })) as CommandRecord | null;
       if (!rec) continue; // 미정의 — planLink 의 missing → resolve LinkError
-      templates.set(r.key, rec.command);
+      templates.set(r.key, commandRefText(rec));
       records.set(r.key, rec);
       queue.push(r.key);
     }
   }
 
   // 2. 링킹 계획(순수) — 순환 검출.
-  const linked = planLink(input.commandId, root.command, (id) => templates.get(id) ?? null);
+  const linked = planLink(input.commandId, commandRefText(root), (id) => templates.get(id) ?? null);
   if (!linked.ok) return { ok: false, code: "CYCLE", cycle: linked.cycle };
   const plan = linked.plan;
 
@@ -160,12 +306,13 @@ export async function runCommand(
     }
   }
 
-  // 3b. secret 가용성 게이트(script/background) — 자식 env 주입을 시도하기 전에, 참조된 모든 secret 이
-  //     볼트에 실제로 있는지(언락+존재) 확인한다. 하나라도 미가용(미설정 또는 볼트 잠김)이면 SECRET_PENDING —
-  //     "set/unlock 먼저" 를 명시한다(Rust 경계의 미가용 실패를 generic EXEC_ERROR 로 뭉뚱그리지 않음). secretNs
-  //     미설정이면 secret 참조는 resolve 단계에서 UNRESOLVED 로 처리되므로 여기선 건드리지 않는다. has 는 boolean
-  //     만 반환 → 평문 0(R2). 프로브가 throw(볼트 잠김)면 미가용으로 본다.
-  if ((type === "script" || type === "background") && input.secretNs) {
+  // 3b. secret 가용성 게이트(script/background/api) — 시크릿 주입(셸 자식 env / HTTP 헤더·바디 Rust 경계
+  //     치환)을 시도하기 전에, 참조된 모든 secret 이 볼트에 실제로 있는지(언락+존재) 확인한다. 하나라도
+  //     미가용(미설정 또는 볼트 잠김)이면 SECRET_PENDING — "set/unlock 먼저" 를 명시한다(Rust 경계의 미가용
+  //     실패를 generic EXEC_ERROR 로 뭉뚱그리지 않음). secretNs 미설정이면 secret 참조는 resolve 단계에서
+  //     UNRESOLVED 로 처리되므로 여기선 건드리지 않는다. has 는 boolean 만 반환 → 평문 0(R2). 프로브가
+  //     throw(볼트 잠김)면 미가용으로 본다.
+  if ((type === "script" || type === "background" || type === "api") && input.secretNs) {
     const secretKeys = new Set<string>();
     for (const tmpl of templates.values()) {
       for (const r of parse(tmpl).refs) {
@@ -201,9 +348,9 @@ export async function runCommand(
     }
   }
 
-  // 4. 링킹 실행 — 위상순으로 참조 command 출력을 모은다(루트 제외, 각 1회). 셸 실행이 필요하므로
-  //    process 표면이 없으면 NO_RUNTIME. 모은 출력은 context.command[id] = stdout(jsonPath 추출 대상).
-  //    secret 참조는 인라인 마커로 resolve → applySecretEnv 로 $SOKSAK_SECRET_N + secretEnv 맵 치환.
+  // 4. 링킹 실행 — 위상순으로 참조 command 를 자기 타입으로 실행(executeNode, 루트 제외·각 1회). 출력을
+  //    context.command[id] 에 모아 다음 노드 resolve 가 되먹인다(jsonPath 추출 대상 = stdout/응답 바디).
+  //    셸 secret=env 주입, api secret=Rust 경계 치환 — 둘 다 executeNode 안에서(R8 단일 실행기).
   const commandCtx: Record<string, unknown> = {};
   const baseCtx = (): ResolveContext => ({
     param: input.inputs ?? {},
@@ -212,75 +359,28 @@ export async function runCommand(
     secretNs: input.secretNs,
   });
 
-  const proc = deps.process;
   for (const id of plan.order) {
-    if (id === input.commandId) continue; // 루트는 마지막에 타입별 실행
-    const tmpl = templates.get(id);
-    if (tmpl == null) continue;
-    const { text, unresolved, handles } = resolveTemplate(tmpl, baseCtx());
-    if (unresolved.length > 0) {
-      return { ok: false, code: "UNRESOLVED", unresolved };
-    }
-    if (!proc) {
-      return { ok: false, code: "NO_RUNTIME", message: "process 권한/표면 없음 — 셸 실행 불가" };
-    }
-    // secret 핸들 → env 플레이스홀더 + secretEnv 맵(평문 0 — Rust 경계가 주입).
-    const sub = applySecretEnv(text, handles);
-    let out: string;
-    try {
-      const r = await runShell(proc, sub.text, { secretEnv: sub.secretEnv });
-      out = r.stdout;
-    } catch (e) {
-      return { ok: false, code: "EXEC_ERROR", message: e instanceof Error ? e.message : String(e) };
-    }
-    // 되먹임 — 출력이 JSON 이면 객체로(jsonPath 추출 가능), 아니면 트림 문자열. 한 번만 파싱(단일 지점).
-    commandCtx[id] = coerceOutput(out);
+    if (id === input.commandId) continue; // 루트는 마지막에 실행
+    const rec = records.get(id);
+    if (rec == null) continue;
+    const r = await executeNode(deps, rec, baseCtx(), false);
+    if (!r.ok) return r; // UNRESOLVED / NO_RUNTIME / EXEC_ERROR 명시 전파(R4)
+    commandCtx[id] = coerceOutput(r.stdout);
   }
 
-  // 5. 루트 resolve — 미해소면 UNRESOLVED. secret 은 인라인 마커(평문 0) → applySecretEnv 로 env 치환.
-  const rootResolved = resolveTemplate(root.command, baseCtx());
-  if (rootResolved.unresolved.length > 0) {
-    return { ok: false, code: "UNRESOLVED", unresolved: rootResolved.unresolved };
-  }
-  // finalCmd 에는 평문 시크릿이 절대 없다 — $SOKSAK_SECRET_N 플레이스홀더만(lastOutput·history 도 동일).
-  const rootSub = applySecretEnv(rootResolved.text, rootResolved.handles);
-  const finalCmd = rootSub.text;
-  const rootSecretEnv = rootSub.secretEnv;
-
-  // 6. 타입별 실행.
-  if (type === "terminal") {
-    const cmds = deps.commands;
-    if (!cmds) return { ok: false, code: "NO_RUNTIME", message: "commands 표면 없음 — 터미널 실행 불가" };
-    // 코어 term.exec(danger:inject) — 포커스 pane 에서 명령+Enter. 인터랙티브(출력 캡처 없음).
-    const r = await cmds.execute("term.exec", { cmd: finalCmd });
-    if (!r.ok) {
-      return { ok: false, code: "EXEC_ERROR", message: r.message ?? `term.exec 실패: ${r.code ?? ""}` };
-    }
-    const output = `터미널 실행: ${finalCmd}`;
-    const historyId = await record(data, root, type, output, undefined, scope);
-    return { ok: true, output, exitCode: 0, historyId };
-  }
-
-  // script / background / (schedule·api 는 후속 — 여기선 셸로 처리하지 않음).
-  if (type !== "script" && type !== "background") {
-    return {
-      ok: false,
-      code: "NO_RUNTIME",
-      message: `실행타입 ${type} 은 후속 범위(이번: script·background·terminal).`,
-    };
-  }
-  if (!proc) return { ok: false, code: "NO_RUNTIME", message: "process 권한/표면 없음 — 셸 실행 불가" };
-
-  let shell;
-  try {
-    // 평문 시크릿은 secretEnv 키 이름만 넘어가고 Rust 경계가 자식 env 로 주입($SOKSAK_SECRET_N 가 셸에서 확장).
-    shell = await runShell(proc, finalCmd, { secretEnv: rootSecretEnv });
-  } catch (e) {
-    return { ok: false, code: "EXEC_ERROR", message: e instanceof Error ? e.message : String(e) };
-  }
-  // 7. 결과 되먹임 — 레코드 갱신 + 히스토리.
-  const historyId = await record(data, root, type, shell.output, shell.exitCode, scope);
-  return { ok: true, output: shell.output, exitCode: shell.exitCode, historyId };
+  // 5. 루트 실행(자기 타입) — executeNode 단일 실행기. 결과를 레코드/히스토리에 기록.
+  const rootResult = await executeNode(deps, root, baseCtx(), true);
+  if (!rootResult.ok) return rootResult;
+  // lastStatusCode = api 면 HTTP status, 그 외는 exitCode. lastOutput = 표시 출력(api 면 [status] body).
+  const statusForRecord = rootResult.statusCode ?? rootResult.exitCode;
+  const historyId = await record(data, root, type, rootResult.output, statusForRecord, scope);
+  return {
+    ok: true,
+    output: rootResult.output,
+    exitCode: rootResult.exitCode,
+    historyId,
+    ...(rootResult.statusCode !== undefined ? { statusCode: rootResult.statusCode } : {}),
+  };
 }
 
 /** 출력을 되먹임 값으로 강제 — JSON 파싱 성공 시 객체/배열, 실패 시 트림 문자열. 단일 지점. */
