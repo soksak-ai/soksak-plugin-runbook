@@ -11,7 +11,8 @@
 
 import { registerCommands } from "./commands/runbook";
 import { defineCollections, type DataApi } from "./data/store";
-import { COMMANDS, GROUPS, HISTORY } from "./data/model";
+import { COMMANDS, GROUPS, HISTORY, type CommandRecord } from "./data/model";
+import { armSchedule } from "./exec/index";
 import { parse, resolve, type ResolveContext } from "./refs/index";
 import { deserialize, serialize, tokensOf } from "./ui/tokens";
 import { createRunbookView, type RunbookApi } from "./ui/view";
@@ -139,6 +140,23 @@ export default {
       // api 실행타입 HTTP 표면(app.network.http — ns 자동주입, 시크릿 Rust 경계 치환).
       network: app.network,
     });
+
+    // schedule 재무장 — 코어 스케줄러는 인메모리(재시작 시 빔). 영속은 플러그인이 소유하므로 activate
+    // 시 활성(비휴지통) schedule 명령을 코어에 다시 등록한다(전역 scope — 프로젝트 scope 재무장은 후속).
+    if (execFn) {
+      void (async () => {
+        try {
+          const rows = (await data.query(COMMANDS, {
+            where: { executionType: "schedule", deleted: false },
+          })) as CommandRecord[];
+          for (const recRow of rows) {
+            await armSchedule({ execute: (n, pp) => execFn(n, pp) }, recRow, undefined, Date.now());
+          }
+        } catch {
+          /* 재무장 실패는 무해 — 다음 add/run/restore 시 재등록 */
+        }
+      })();
+    }
 
     // ── Reference 엔진 검증 노출(엔진 자체 단언용 — parse/resolve 순수 코어). ──
     sub(

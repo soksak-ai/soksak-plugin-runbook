@@ -152,7 +152,11 @@
       },
       {
         "name": "runbook.command.run",
-        "title": "명령 실행(링킹·셸/터미널)"
+        "title": "명령 실행(링킹·셸/터미널/api)"
+      },
+      {
+        "name": "runbook.schedule.fire",
+        "title": "일정 발화(스케줄러 호출)"
       },
       {
         "name": "runbook.group.add",

@@ -165,7 +165,9 @@ async function executeNode(
 ): Promise<NodeResult> {
   const type = rec.executionType;
 
-  if (type === "script" || type === "background") {
+  // schedule 의 발화 action 은 command 필드를 셸로 실행한다(script 와 동일 경로). 예약(arm)은 command.run
+  // 핸들러가 별도 처리하고, 코어 스케줄러가 발화할 때 runbook.schedule.fire→runCommand 로 여기 도달한다.
+  if (type === "script" || type === "background" || type === "schedule") {
     const proc = deps.process;
     if (!proc) return { ok: false, code: "NO_RUNTIME", message: "process 표면 없음 — 셸 실행 불가" };
     const { text, unresolved, handles } = resolveTemplate(rec.command, ctx);
@@ -312,7 +314,10 @@ export async function runCommand(
   //     실패를 generic EXEC_ERROR 로 뭉뚱그리지 않음). secretNs 미설정이면 secret 참조는 resolve 단계에서
   //     UNRESOLVED 로 처리되므로 여기선 건드리지 않는다. has 는 boolean 만 반환 → 평문 0(R2). 프로브가
   //     throw(볼트 잠김)면 미가용으로 본다.
-  if ((type === "script" || type === "background" || type === "api") && input.secretNs) {
+  if (
+    (type === "script" || type === "background" || type === "api" || type === "schedule") &&
+    input.secretNs
+  ) {
     const secretKeys = new Set<string>();
     for (const tmpl of templates.values()) {
       for (const r of parse(tmpl).refs) {
