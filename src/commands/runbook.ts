@@ -23,6 +23,11 @@ import {
   nextCommandOrder,
   type DataApi,
 } from "../data/store";
+import {
+  runCommand,
+  type ExecuteApi,
+  type ProcessApi,
+} from "../exec/index";
 
 interface CommandsApi {
   register: (
@@ -44,11 +49,18 @@ const err = (code: string, message: string) => ({ ok: false, code, message });
 const scopeOf = (p: Record<string, unknown>): string | undefined =>
   typeof p.scope === "string" ? p.scope : undefined;
 
-/** 모든 CRUD 커맨드를 등록한다. dispose 들은 호출자(activate)가 subscriptions 에 담는다. */
+/** 실행 엔진이 의존하는 런타임 표면(셸 spawn + 코어 명령 실행). 권한 게이트로 undefined 가능. */
+export interface RuntimeApis {
+  process?: ProcessApi;
+  execute?: ExecuteApi;
+}
+
+/** 모든 CRUD + 실행 커맨드를 등록한다. dispose 들은 호출자(activate)가 subscriptions 에 담는다. */
 export function registerCommands(
   data: DataApi,
   cmds: CommandsApi,
   sub: (d: Disposable) => void,
+  runtime: RuntimeApis = {},
 ): void {
   const reg = (
     name: string,
@@ -276,6 +288,42 @@ export function registerCommands(
       const favorite = !rec.favorite;
       await data.put(COMMANDS, { ...rec, favorite }, { scope, id: p.commandId });
       return ok({ commandId: p.commandId, favorite });
+    },
+  });
+
+  // ── 실행(run) — 링킹 + 셸/터미널 ──
+
+  reg("runbook.command.run", {
+    description:
+      "런북 명령 실행. command 참조는 위상순으로 먼저 실행→출력을 다음 입력으로 되먹임(링킹). 순환=CYCLE, 미해소 참조=UNRESOLVED, secret 참조=SECRET_PENDING(평문 주입은 후속). script/background=셸 실행(stdout/stderr·exitCode 캡처), terminal=코어 term.exec(포커스 pane). 결과는 lastOutput/lastStatusCode/lastExecutedAt 갱신 + 히스토리 자동 기록.",
+    params: {
+      commandId: { type: "string", required: true },
+      inputs: { type: "object", description: "파라미터 치환 맵({name}→값)" },
+      env: { type: "object", description: "환경변수 치환 맵({{var}}→값)" },
+      scope: { type: "string" },
+    },
+    returns:
+      "{ ok, output, exitCode, historyId } | { ok:false, code:CYCLE|UNRESOLVED|SECRET_PENDING|TARGET_NOT_FOUND|NO_RUNTIME|EXEC_ERROR }",
+    examples: [
+      'sok plugin.soksak-plugin-runbook.runbook.command.run \'{"commandId":"abc"}\'',
+      'sok plugin.soksak-plugin-runbook.runbook.command.run \'{"commandId":"abc","inputs":{"env":"prod"}}\'',
+    ],
+    handler: async (p) => {
+      if (typeof p.commandId !== "string") return err("INVALID_PARAMS", "commandId 필요");
+      const inputs =
+        p.inputs && typeof p.inputs === "object" && !Array.isArray(p.inputs)
+          ? (p.inputs as Record<string, string>)
+          : undefined;
+      const env =
+        p.env && typeof p.env === "object" && !Array.isArray(p.env)
+          ? (p.env as Record<string, string>)
+          : undefined;
+      const result = await runCommand(
+        { data, process: runtime.process, commands: runtime.execute },
+        { commandId: p.commandId, scope: scopeOf(p), inputs, env },
+      );
+      // RunResult 는 이미 {ok,...} 형태 — 그대로 반환(code 명시 전파 R4).
+      return result;
     },
   });
 

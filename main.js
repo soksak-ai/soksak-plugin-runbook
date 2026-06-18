@@ -321,6 +321,67 @@ function resolve(parsed, ctx) {
   return { text, errors, handles };
 }
 
+// src/refs/graph.ts
+function commandDeps(refs) {
+  const out = [];
+  for (const r of refs) {
+    if (r.provider === "command") out.push(r.key);
+  }
+  return out;
+}
+function detectCycle(graph) {
+  const WHITE = 0;
+  const GRAY = 1;
+  const BLACK = 2;
+  const color = /* @__PURE__ */ new Map();
+  for (const id of graph.keys()) color.set(id, WHITE);
+  const stack = [];
+  const dfs = (node) => {
+    color.set(node, GRAY);
+    stack.push(node);
+    for (const dep of graph.get(node) ?? []) {
+      if (!graph.has(dep)) continue;
+      const c = color.get(dep);
+      if (c === GRAY) {
+        const from = stack.indexOf(dep);
+        return [...stack.slice(from), dep];
+      }
+      if (c === WHITE) {
+        const found = dfs(dep);
+        if (found) return found;
+      }
+    }
+    stack.pop();
+    color.set(node, BLACK);
+    return null;
+  };
+  for (const id of graph.keys()) {
+    if (color.get(id) === WHITE) {
+      const cycle = dfs(id);
+      if (cycle) return cycle;
+    }
+  }
+  return null;
+}
+function topoSort(graph) {
+  const cycle = detectCycle(graph);
+  if (cycle) {
+    throw new Error(`\uC21C\uD658 \uC758\uC874 \u2014 \uC704\uC0C1\uC815\uB82C \uBD88\uAC00: ${cycle.join(" \u2192 ")}`);
+  }
+  const order = [];
+  const visited = /* @__PURE__ */ new Set();
+  const visit = (node) => {
+    if (visited.has(node)) return;
+    visited.add(node);
+    for (const dep of graph.get(node) ?? []) {
+      if (graph.has(dep)) visit(dep);
+    }
+    order.push(node);
+  };
+  for (const id of graph.keys()) visit(id);
+  return order;
+}
+
 // src/data/store.ts
 async function defineCollections(data) {
   await data.define(COMMANDS, COMMANDS_SCHEMA);
@@ -385,11 +446,219 @@ async function listHistory(data, f) {
   });
 }
 
+// src/exec/link.ts
+function collectTasks(rootId, rootTemplate, loadTemplate) {
+  const tasks = { [rootId]: rootTemplate };
+  const missing = /* @__PURE__ */ new Set();
+  const seen = /* @__PURE__ */ new Set([rootId]);
+  const queue = [rootId];
+  while (queue.length > 0) {
+    const id = queue.shift();
+    const { refs } = parse(tasks[id]);
+    for (const depId of commandDeps(refs)) {
+      if (seen.has(depId)) continue;
+      seen.add(depId);
+      const tmpl = loadTemplate(depId);
+      if (tmpl == null) {
+        missing.add(depId);
+        continue;
+      }
+      tasks[depId] = tmpl;
+      queue.push(depId);
+    }
+  }
+  return { tasks, missing };
+}
+function planLink(rootId, rootTemplate, loadTemplate) {
+  const { tasks, missing } = collectTasks(rootId, rootTemplate, loadTemplate);
+  const graph = /* @__PURE__ */ new Map();
+  for (const [id, template] of Object.entries(tasks)) {
+    const { refs } = parse(template);
+    const deps = commandDeps(refs).filter((d) => d in tasks);
+    graph.set(id, new Set(deps));
+  }
+  const cycle = detectCycle(graph);
+  if (cycle) return { ok: false, cycle };
+  const order = topoSort(graph);
+  return { ok: true, plan: { order, missing: [...missing] } };
+}
+
+// src/exec/spawn.ts
+var SHELL = "/bin/sh";
+var decode = (() => {
+  const dec = new TextDecoder();
+  return (b) => dec.decode(b);
+})();
+function runShell(proc, resolved, opts) {
+  return new Promise((resolve2, reject) => {
+    let outBuf = "";
+    let errBuf = "";
+    const disposers = [];
+    const cleanup = () => {
+      for (const d of disposers.splice(0)) {
+        try {
+          d.dispose();
+        } catch {
+        }
+      }
+    };
+    proc.spawn(SHELL, ["-c", resolved], opts).then((handle) => {
+      disposers.push(proc.onData(handle, (b) => outBuf += decode(b)));
+      disposers.push(proc.onStderr(handle, (b) => errBuf += decode(b)));
+      disposers.push(
+        proc.onExit(handle, (code) => {
+          cleanup();
+          const output = errBuf ? `${outBuf}${errBuf}` : outBuf;
+          resolve2({ stdout: outBuf, stderr: errBuf, output, exitCode: code });
+        })
+      );
+    }).catch((e) => {
+      cleanup();
+      reject(e instanceof Error ? e : new Error(String(e)));
+    });
+  });
+}
+
+// src/exec/engine.ts
+function hasSecretRef(template) {
+  return parse(template).refs.some((r) => r.provider === "secret");
+}
+function resolveTemplate(template, ctx) {
+  const r = resolve(parse(template), ctx);
+  return { text: r.text, unresolved: r.errors.map((e) => e.ref.raw) };
+}
+async function runCommand(deps, input) {
+  const { data } = deps;
+  const scope = input.scope;
+  const root = await data.get(COMMANDS, input.commandId, { scope });
+  if (!root) return { ok: false, code: "TARGET_NOT_FOUND", message: "\uBA85\uB839 \uC5C6\uC74C" };
+  const templates = /* @__PURE__ */ new Map([[input.commandId, root.command]]);
+  const records = /* @__PURE__ */ new Map([[input.commandId, root]]);
+  const seen = /* @__PURE__ */ new Set([input.commandId]);
+  const queue = [input.commandId];
+  while (queue.length > 0) {
+    const id = queue.shift();
+    const tmpl = templates.get(id);
+    if (tmpl == null) continue;
+    for (const r of parse(tmpl).refs) {
+      if (r.provider !== "command" || seen.has(r.key)) continue;
+      seen.add(r.key);
+      const rec = await data.get(COMMANDS, r.key, { scope });
+      if (!rec) continue;
+      templates.set(r.key, rec.command);
+      records.set(r.key, rec);
+      queue.push(r.key);
+    }
+  }
+  const linked = planLink(input.commandId, root.command, (id) => templates.get(id) ?? null);
+  if (!linked.ok) return { ok: false, code: "CYCLE", cycle: linked.cycle };
+  const plan = linked.plan;
+  for (const tmpl of templates.values()) {
+    if (hasSecretRef(tmpl)) {
+      return {
+        ok: false,
+        code: "SECRET_PENDING",
+        message: "secret \uCC38\uC870 \u2014 \uD3C9\uBB38 \uC8FC\uC785\uC740 \uD6C4\uC18D(Rust \uACBD\uACC4). \uC774\uBC88 \uBC94\uC704\uB294 \uC178/\uD130\uBBF8\uB110 \uC2E4\uD589\uB9CC."
+      };
+    }
+  }
+  const commandCtx = {};
+  const baseCtx = () => ({
+    param: input.inputs ?? {},
+    env: input.env ?? {},
+    command: commandCtx
+  });
+  const proc = deps.process;
+  for (const id of plan.order) {
+    if (id === input.commandId) continue;
+    const tmpl = templates.get(id);
+    if (tmpl == null) continue;
+    const { text, unresolved } = resolveTemplate(tmpl, baseCtx());
+    if (unresolved.length > 0) {
+      return { ok: false, code: "UNRESOLVED", unresolved };
+    }
+    if (!proc) {
+      return { ok: false, code: "NO_RUNTIME", message: "process \uAD8C\uD55C/\uD45C\uBA74 \uC5C6\uC74C \u2014 \uC178 \uC2E4\uD589 \uBD88\uAC00" };
+    }
+    let out;
+    try {
+      const r = await runShell(proc, text);
+      out = r.stdout;
+    } catch (e) {
+      return { ok: false, code: "EXEC_ERROR", message: e instanceof Error ? e.message : String(e) };
+    }
+    commandCtx[id] = coerceOutput(out);
+  }
+  const rootResolved = resolveTemplate(root.command, baseCtx());
+  if (rootResolved.unresolved.length > 0) {
+    return { ok: false, code: "UNRESOLVED", unresolved: rootResolved.unresolved };
+  }
+  const finalCmd = rootResolved.text;
+  const type = root.executionType;
+  if (type === "terminal") {
+    const cmds = deps.commands;
+    if (!cmds) return { ok: false, code: "NO_RUNTIME", message: "commands \uD45C\uBA74 \uC5C6\uC74C \u2014 \uD130\uBBF8\uB110 \uC2E4\uD589 \uBD88\uAC00" };
+    const r = await cmds.execute("term.exec", { cmd: finalCmd });
+    if (!r.ok) {
+      return { ok: false, code: "EXEC_ERROR", message: r.message ?? `term.exec \uC2E4\uD328: ${r.code ?? ""}` };
+    }
+    const output = `\uD130\uBBF8\uB110 \uC2E4\uD589: ${finalCmd}`;
+    const historyId2 = await record(data, root, type, output, void 0, scope);
+    return { ok: true, output, exitCode: 0, historyId: historyId2 };
+  }
+  if (type !== "script" && type !== "background") {
+    return {
+      ok: false,
+      code: "NO_RUNTIME",
+      message: `\uC2E4\uD589\uD0C0\uC785 ${type} \uC740 \uD6C4\uC18D \uBC94\uC704(\uC774\uBC88: script\xB7background\xB7terminal).`
+    };
+  }
+  if (!proc) return { ok: false, code: "NO_RUNTIME", message: "process \uAD8C\uD55C/\uD45C\uBA74 \uC5C6\uC74C \u2014 \uC178 \uC2E4\uD589 \uBD88\uAC00" };
+  let shell;
+  try {
+    shell = await runShell(proc, finalCmd);
+  } catch (e) {
+    return { ok: false, code: "EXEC_ERROR", message: e instanceof Error ? e.message : String(e) };
+  }
+  const historyId = await record(data, root, type, shell.output, shell.exitCode, scope);
+  return { ok: true, output: shell.output, exitCode: shell.exitCode, historyId };
+}
+function coerceOutput(out) {
+  const t = out.trim();
+  if (t === "") return "";
+  if (t[0] === "{" || t[0] === "[") {
+    try {
+      return JSON.parse(t);
+    } catch {
+    }
+  }
+  return t;
+}
+async function record(data, root, type, output, exitCode, scope) {
+  const now = Date.now();
+  const next = {
+    ...root,
+    lastOutput: output,
+    lastExecutedAt: now
+  };
+  if (exitCode !== void 0) next.lastStatusCode = exitCode;
+  await data.put(COMMANDS, next, { scope, id: root.id });
+  const hist = makeHistory({
+    label: root.label,
+    command: root.command,
+    type,
+    output,
+    statusCode: exitCode,
+    commandId: typeof root.id === "string" ? root.id : void 0
+  });
+  return data.put(HISTORY, hist, { scope });
+}
+
 // src/commands/runbook.ts
 var ok = (extra) => ({ ok: true, ...extra });
 var err = (code, message) => ({ ok: false, code, message });
 var scopeOf = (p) => typeof p.scope === "string" ? p.scope : void 0;
-function registerCommands(data, cmds, sub) {
+function registerCommands(data, cmds, sub, runtime = {}) {
   const reg = (name, spec) => sub(cmds.register(name, spec));
   reg("runbook.command.add", {
     description: "\uB7F0\uBD81 \uBA85\uB839 \uCD94\uAC00. label\xB7command(\uD15C\uD50C\uB9BF)\xB7executionType(terminal|script|background|schedule|api) \uD544\uC218. groupId \uC0DD\uB7B5 \uC2DC \uAE30\uBCF8 \uADF8\uB8F9. command \uD15C\uD50C\uB9BF\uC758 Reference \uBA54\uD0C0\uB294 parse \uB85C \uCD94\uCD9C\xB7\uC800\uC7A5(\uAC80\uC99D\uC6A9).",
@@ -593,6 +862,30 @@ function registerCommands(data, cmds, sub) {
       const favorite = !rec.favorite;
       await data.put(COMMANDS, { ...rec, favorite }, { scope, id: p.commandId });
       return ok({ commandId: p.commandId, favorite });
+    }
+  });
+  reg("runbook.command.run", {
+    description: "\uB7F0\uBD81 \uBA85\uB839 \uC2E4\uD589. command \uCC38\uC870\uB294 \uC704\uC0C1\uC21C\uC73C\uB85C \uBA3C\uC800 \uC2E4\uD589\u2192\uCD9C\uB825\uC744 \uB2E4\uC74C \uC785\uB825\uC73C\uB85C \uB418\uBA39\uC784(\uB9C1\uD0B9). \uC21C\uD658=CYCLE, \uBBF8\uD574\uC18C \uCC38\uC870=UNRESOLVED, secret \uCC38\uC870=SECRET_PENDING(\uD3C9\uBB38 \uC8FC\uC785\uC740 \uD6C4\uC18D). script/background=\uC178 \uC2E4\uD589(stdout/stderr\xB7exitCode \uCEA1\uCC98), terminal=\uCF54\uC5B4 term.exec(\uD3EC\uCEE4\uC2A4 pane). \uACB0\uACFC\uB294 lastOutput/lastStatusCode/lastExecutedAt \uAC31\uC2E0 + \uD788\uC2A4\uD1A0\uB9AC \uC790\uB3D9 \uAE30\uB85D.",
+    params: {
+      commandId: { type: "string", required: true },
+      inputs: { type: "object", description: "\uD30C\uB77C\uBBF8\uD130 \uCE58\uD658 \uB9F5({name}\u2192\uAC12)" },
+      env: { type: "object", description: "\uD658\uACBD\uBCC0\uC218 \uCE58\uD658 \uB9F5({{var}}\u2192\uAC12)" },
+      scope: { type: "string" }
+    },
+    returns: "{ ok, output, exitCode, historyId } | { ok:false, code:CYCLE|UNRESOLVED|SECRET_PENDING|TARGET_NOT_FOUND|NO_RUNTIME|EXEC_ERROR }",
+    examples: [
+      `sok plugin.soksak-plugin-runbook.runbook.command.run '{"commandId":"abc"}'`,
+      `sok plugin.soksak-plugin-runbook.runbook.command.run '{"commandId":"abc","inputs":{"env":"prod"}}'`
+    ],
+    handler: async (p) => {
+      if (typeof p.commandId !== "string") return err("INVALID_PARAMS", "commandId \uD544\uC694");
+      const inputs = p.inputs && typeof p.inputs === "object" && !Array.isArray(p.inputs) ? p.inputs : void 0;
+      const env = p.env && typeof p.env === "object" && !Array.isArray(p.env) ? p.env : void 0;
+      const result = await runCommand(
+        { data, process: runtime.process, commands: runtime.execute },
+        { commandId: p.commandId, scope: scopeOf(p), inputs, env }
+      );
+      return result;
     }
   });
   reg("runbook.group.add", {
@@ -855,7 +1148,11 @@ var index_default = {
       sub(data.watch(coll, void 0, () => {
       }));
     }
-    registerCommands(data, cmds, sub);
+    const execFn = cmds.execute;
+    registerCommands(data, cmds, sub, {
+      process: app.process,
+      execute: execFn ? { execute: (name, params) => execFn(name, params) } : void 0
+    });
     sub(
       cmds.register("ref.parse", {
         description: "Reference \uD15C\uD50C\uB9BF\uC744 \uD30C\uC2F1\uD574 \uB178\uB4DC\uC640 \uCD94\uCD9C\uB41C Reference \uBAA9\uB85D\uC744 \uBC18\uD658(\uC5D4\uC9C4 \uAC80\uC99D).",
