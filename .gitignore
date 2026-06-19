@@ -1,3 +1,6 @@
 node_modules
 dist
 # main.js 는 entry 산출물(번들)이라 커밋한다 — 무시하지 않는다.
+
+# 머신-로컬 dev 마커(추적 금지 — 배포 메타는 별도 파일)
+.soksak.json
