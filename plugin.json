@@ -7,7 +7,10 @@
   },
   "version": "0.0.1",
   "repo": "https://github.com/soksak-ai/soksak-plugin-runbook.git",
-  "description": "재사용 가능한 작업(런북)을 저장하고 실행한다. 작업은 파라미터·환경변수·시크릿·다른 작업 출력을 Reference 로 엮으며, 링킹은 순수 해석 + 의존 그래프 + 순환 검출로 안전하게 풀린다.",
+  "description": {
+    "ko": "재사용 가능한 작업(런북)을 저장하고 실행한다. 작업은 파라미터·환경변수·시크릿·다른 작업 출력을 Reference 로 엮으며, 링킹은 순수 해석 + 의존 그래프 + 순환 검출로 안전하게 풀린다.",
+    "en": "Store and run reusable commands (runbooks). Commands reference parameters, env vars, secrets, and other command outputs; linking resolves safely via pure evaluation, dependency graph, and cycle detection."
+  },
   "entry": "main.js",
   "permissions": [
     "data",
@@ -108,119 +111,206 @@
     "commands": [
       {
         "name": "runbook.command.add",
-        "title": "명령 추가"
+        "title": {
+          "ko": "명령 추가",
+          "en": "Add Command"
+        }
       },
       {
         "name": "runbook.command.get",
-        "title": "명령 조회"
+        "title": {
+          "ko": "명령 조회",
+          "en": "Get Command"
+        }
       },
       {
         "name": "runbook.command.refs",
-        "title": "명령 Reference 추출"
+        "title": {
+          "ko": "명령 Reference 추출",
+          "en": "Extract Command Refs"
+        }
       },
       {
         "name": "runbook.command.update",
-        "title": "명령 갱신"
+        "title": {
+          "ko": "명령 갱신",
+          "en": "Update Command"
+        }
       },
       {
         "name": "runbook.command.delete",
-        "title": "명령 삭제(소프트)"
+        "title": {
+          "ko": "명령 삭제(소프트)",
+          "en": "Delete Command (soft)"
+        }
       },
       {
         "name": "runbook.command.restore",
-        "title": "명령 복원"
+        "title": {
+          "ko": "명령 복원",
+          "en": "Restore Command"
+        }
       },
       {
         "name": "runbook.command.duplicate",
-        "title": "명령 복제"
+        "title": {
+          "ko": "명령 복제",
+          "en": "Duplicate Command"
+        }
       },
       {
         "name": "runbook.command.list",
-        "title": "명령 목록"
+        "title": {
+          "ko": "명령 목록",
+          "en": "List Commands"
+        }
       },
       {
         "name": "runbook.command.search",
-        "title": "명령 검색"
+        "title": {
+          "ko": "명령 검색",
+          "en": "Search Commands"
+        }
       },
       {
         "name": "runbook.command.set-group",
-        "title": "명령 그룹 이동"
+        "title": {
+          "ko": "명령 그룹 이동",
+          "en": "Move Command to Group"
+        }
       },
       {
         "name": "runbook.command.favorite",
-        "title": "명령 즐겨찾기 토글"
+        "title": {
+          "ko": "명령 즐겨찾기 토글",
+          "en": "Toggle Command Favorite"
+        }
       },
       {
         "name": "runbook.command.run",
-        "title": "명령 실행(링킹·셸/터미널/api)"
+        "title": {
+          "ko": "명령 실행(링킹·셸/터미널/api)",
+          "en": "Run Command (link·shell/terminal/api)"
+        }
       },
       {
         "name": "runbook.schedule.fire",
-        "title": "일정 발화(스케줄러 호출)"
+        "title": {
+          "ko": "일정 발화(스케줄러 호출)",
+          "en": "Fire Schedule"
+        }
       },
       {
         "name": "runbook.group.add",
-        "title": "그룹 추가"
+        "title": {
+          "ko": "그룹 추가",
+          "en": "Add Group"
+        }
       },
       {
         "name": "runbook.group.update",
-        "title": "그룹 갱신"
+        "title": {
+          "ko": "그룹 갱신",
+          "en": "Update Group"
+        }
       },
       {
         "name": "runbook.group.delete",
-        "title": "그룹 삭제"
+        "title": {
+          "ko": "그룹 삭제",
+          "en": "Delete Group"
+        }
       },
       {
         "name": "runbook.group.list",
-        "title": "그룹 목록"
+        "title": {
+          "ko": "그룹 목록",
+          "en": "List Groups"
+        }
       },
       {
         "name": "runbook.history.add",
-        "title": "히스토리 기록"
+        "title": {
+          "ko": "히스토리 기록",
+          "en": "Record History"
+        }
       },
       {
         "name": "runbook.history.list",
-        "title": "히스토리 목록"
+        "title": {
+          "ko": "히스토리 목록",
+          "en": "List History"
+        }
       },
       {
         "name": "runbook.history.search",
-        "title": "히스토리 검색"
+        "title": {
+          "ko": "히스토리 검색",
+          "en": "Search History"
+        }
       },
       {
         "name": "runbook.history.delete",
-        "title": "히스토리 삭제(소프트)"
+        "title": {
+          "ko": "히스토리 삭제(소프트)",
+          "en": "Delete History (soft)"
+        }
       },
       {
         "name": "runbook.history.restore",
-        "title": "히스토리 복원"
+        "title": {
+          "ko": "히스토리 복원",
+          "en": "Restore History"
+        }
       },
       {
         "name": "runbook.history.clear",
-        "title": "히스토리 전체 삭제"
+        "title": {
+          "ko": "히스토리 전체 삭제",
+          "en": "Clear History"
+        }
       },
       {
         "name": "runbook.export",
-        "title": "런북 내보내기(JSONL)"
+        "title": {
+          "ko": "런북 내보내기(JSONL)",
+          "en": "Export Runbook (JSONL)"
+        }
       },
       {
         "name": "runbook.import",
-        "title": "런북 가져오기(JSONL)"
+        "title": {
+          "ko": "런북 가져오기(JSONL)",
+          "en": "Import Runbook (JSONL)"
+        }
       },
       {
         "name": "ref.parse",
-        "title": "Reference 파싱(엔진 검증)"
+        "title": {
+          "ko": "Reference 파싱(엔진 검증)",
+          "en": "Parse Reference (engine)"
+        }
       },
       {
         "name": "ref.resolve",
-        "title": "Reference 해석(엔진 검증)"
+        "title": {
+          "ko": "Reference 해석(엔진 검증)",
+          "en": "Resolve Reference (engine)"
+        }
       },
       {
         "name": "runbook.editor.tokens",
-        "title": "에디터 토큰 역직렬화(헤드리스)"
+        "title": {
+          "ko": "에디터 토큰 역직렬화(헤드리스)",
+          "en": "Editor Deserialize Tokens (headless)"
+        }
       },
       {
         "name": "runbook.editor.serialize",
-        "title": "에디터 직렬화(헤드리스)"
+        "title": {
+          "ko": "에디터 직렬화(헤드리스)",
+          "en": "Editor Serialize (headless)"
+        }
       }
     ],
     "skill": {
