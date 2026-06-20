@@ -222,6 +222,9 @@
         "name": "runbook.editor.serialize",
         "title": "에디터 직렬화(헤드리스)"
       }
-    ]
+    ],
+    "skill": {
+      "path": "skill/SKILL.md"
+    }
   }
 }
