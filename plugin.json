@@ -1,7 +1,10 @@
 {
   "spec": "soksak-plugin-spec@1",
   "id": "soksak-plugin-runbook",
-  "name": { "ko": "런북", "en": "Runbook" },
+  "name": {
+    "ko": "런북",
+    "en": "Runbook"
+  },
   "version": "0.1.0",
   "repo": "https://github.com/soksak-ai/soksak-plugin-runbook.git",
   "description": "재사용 가능한 작업(런북)을 저장하고 실행한다. 작업은 파라미터·환경변수·시크릿·다른 작업 출력을 Reference 로 엮으며, 링킹은 순수 해석 + 의존 그래프 + 순환 검출로 안전하게 풀린다.",
@@ -22,60 +25,206 @@
     "views": [
       {
         "id": "runbook",
-        "title": { "ko": "런북", "en": "Runbook" },
+        "title": {
+          "ko": "런북",
+          "en": "Runbook"
+        },
         "icon": "📓",
-        "placements": ["sidebar-right"]
+        "placements": [
+          "sidebar-right"
+        ]
       }
     ],
     "nodes": [
-      { "id": "search-input", "description": "명령 검색 입력" },
-      { "id": "group-select", "description": "그룹 필터 선택" },
-      { "id": "command-add", "description": "명령 추가 버튼" },
-      { "id": "command-row", "description": "명령 목록 행" },
-      { "id": "run-button", "description": "명령 실행 버튼" },
-      { "id": "command-fav", "description": "즐겨찾기 토글 버튼" },
-      { "id": "command-edit", "description": "명령 편집 버튼/폼" },
-      { "id": "command-del", "description": "명령 삭제 버튼" },
-      { "id": "command-form", "description": "명령 추가 폼" },
-      { "id": "form-label", "description": "폼 라벨 입력" },
-      { "id": "form-exec", "description": "폼 실행 타입 선택" },
-      { "id": "form-save", "description": "폼 저장 버튼" },
-      { "id": "form-cancel", "description": "폼 취소 버튼" },
-      { "id": "command-input", "description": "인라인 배지 입력 에디터(contenteditable 템플릿)" },
-      { "id": "badge", "description": "원자 배지 span(토큰 type#label)" },
-      { "id": "suggestions", "description": "자동완성 드롭다운" },
-      { "id": "suggestion-item", "description": "자동완성 후보 항목" }
+      {
+        "id": "search-input",
+        "description": "명령 검색 입력"
+      },
+      {
+        "id": "group-select",
+        "description": "그룹 필터 선택"
+      },
+      {
+        "id": "command-add",
+        "description": "명령 추가 버튼"
+      },
+      {
+        "id": "command-row",
+        "description": "명령 목록 행"
+      },
+      {
+        "id": "run-button",
+        "description": "명령 실행 버튼"
+      },
+      {
+        "id": "command-fav",
+        "description": "즐겨찾기 토글 버튼"
+      },
+      {
+        "id": "command-edit",
+        "description": "명령 편집 버튼/폼"
+      },
+      {
+        "id": "command-del",
+        "description": "명령 삭제 버튼"
+      },
+      {
+        "id": "command-form",
+        "description": "명령 추가 폼"
+      },
+      {
+        "id": "form-label",
+        "description": "폼 라벨 입력"
+      },
+      {
+        "id": "form-exec",
+        "description": "폼 실행 타입 선택"
+      },
+      {
+        "id": "form-save",
+        "description": "폼 저장 버튼"
+      },
+      {
+        "id": "form-cancel",
+        "description": "폼 취소 버튼"
+      },
+      {
+        "id": "command-input",
+        "description": "인라인 배지 입력 에디터(contenteditable 템플릿)"
+      },
+      {
+        "id": "badge",
+        "description": "원자 배지 span(토큰 type#label)"
+      },
+      {
+        "id": "suggestions",
+        "description": "자동완성 드롭다운"
+      },
+      {
+        "id": "suggestion-item",
+        "description": "자동완성 후보 항목"
+      }
     ],
     "commands": [
-      { "name": "runbook.command.add", "title": "명령 추가" },
-      { "name": "runbook.command.get", "title": "명령 조회" },
-      { "name": "runbook.command.refs", "title": "명령 Reference 추출" },
-      { "name": "runbook.command.update", "title": "명령 갱신" },
-      { "name": "runbook.command.delete", "title": "명령 삭제(소프트)" },
-      { "name": "runbook.command.restore", "title": "명령 복원" },
-      { "name": "runbook.command.duplicate", "title": "명령 복제" },
-      { "name": "runbook.command.list", "title": "명령 목록" },
-      { "name": "runbook.command.search", "title": "명령 검색" },
-      { "name": "runbook.command.set-group", "title": "명령 그룹 이동" },
-      { "name": "runbook.command.favorite", "title": "명령 즐겨찾기 토글" },
-      { "name": "runbook.command.run", "title": "명령 실행(링킹·셸/터미널/api)" },
-      { "name": "runbook.schedule.fire", "title": "일정 발화(스케줄러 호출)" },
-      { "name": "runbook.group.add", "title": "그룹 추가" },
-      { "name": "runbook.group.update", "title": "그룹 갱신" },
-      { "name": "runbook.group.delete", "title": "그룹 삭제" },
-      { "name": "runbook.group.list", "title": "그룹 목록" },
-      { "name": "runbook.history.add", "title": "히스토리 기록" },
-      { "name": "runbook.history.list", "title": "히스토리 목록" },
-      { "name": "runbook.history.search", "title": "히스토리 검색" },
-      { "name": "runbook.history.delete", "title": "히스토리 삭제(소프트)" },
-      { "name": "runbook.history.restore", "title": "히스토리 복원" },
-      { "name": "runbook.history.clear", "title": "히스토리 전체 삭제" },
-      { "name": "runbook.export", "title": "런북 내보내기(JSONL)" },
-      { "name": "runbook.import", "title": "런북 가져오기(JSONL)" },
-      { "name": "ref.parse", "title": "Reference 파싱(엔진 검증)" },
-      { "name": "ref.resolve", "title": "Reference 해석(엔진 검증)" },
-      { "name": "runbook.editor.tokens", "title": "에디터 토큰 역직렬화(헤드리스)" },
-      { "name": "runbook.editor.serialize", "title": "에디터 직렬화(헤드리스)" }
-    ]
+      {
+        "name": "runbook.command.add",
+        "title": "명령 추가"
+      },
+      {
+        "name": "runbook.command.get",
+        "title": "명령 조회"
+      },
+      {
+        "name": "runbook.command.refs",
+        "title": "명령 Reference 추출"
+      },
+      {
+        "name": "runbook.command.update",
+        "title": "명령 갱신"
+      },
+      {
+        "name": "runbook.command.delete",
+        "title": "명령 삭제(소프트)"
+      },
+      {
+        "name": "runbook.command.restore",
+        "title": "명령 복원"
+      },
+      {
+        "name": "runbook.command.duplicate",
+        "title": "명령 복제"
+      },
+      {
+        "name": "runbook.command.list",
+        "title": "명령 목록"
+      },
+      {
+        "name": "runbook.command.search",
+        "title": "명령 검색"
+      },
+      {
+        "name": "runbook.command.set-group",
+        "title": "명령 그룹 이동"
+      },
+      {
+        "name": "runbook.command.favorite",
+        "title": "명령 즐겨찾기 토글"
+      },
+      {
+        "name": "runbook.command.run",
+        "title": "명령 실행(링킹·셸/터미널/api)"
+      },
+      {
+        "name": "runbook.schedule.fire",
+        "title": "일정 발화(스케줄러 호출)"
+      },
+      {
+        "name": "runbook.group.add",
+        "title": "그룹 추가"
+      },
+      {
+        "name": "runbook.group.update",
+        "title": "그룹 갱신"
+      },
+      {
+        "name": "runbook.group.delete",
+        "title": "그룹 삭제"
+      },
+      {
+        "name": "runbook.group.list",
+        "title": "그룹 목록"
+      },
+      {
+        "name": "runbook.history.add",
+        "title": "히스토리 기록"
+      },
+      {
+        "name": "runbook.history.list",
+        "title": "히스토리 목록"
+      },
+      {
+        "name": "runbook.history.search",
+        "title": "히스토리 검색"
+      },
+      {
+        "name": "runbook.history.delete",
+        "title": "히스토리 삭제(소프트)"
+      },
+      {
+        "name": "runbook.history.restore",
+        "title": "히스토리 복원"
+      },
+      {
+        "name": "runbook.history.clear",
+        "title": "히스토리 전체 삭제"
+      },
+      {
+        "name": "runbook.export",
+        "title": "런북 내보내기(JSONL)"
+      },
+      {
+        "name": "runbook.import",
+        "title": "런북 가져오기(JSONL)"
+      },
+      {
+        "name": "ref.parse",
+        "title": "Reference 파싱(엔진 검증)"
+      },
+      {
+        "name": "ref.resolve",
+        "title": "Reference 해석(엔진 검증)"
+      },
+      {
+        "name": "runbook.editor.tokens",
+        "title": "에디터 토큰 역직렬화(헤드리스)"
+      },
+      {
+        "name": "runbook.editor.serialize",
+        "title": "에디터 직렬화(헤드리스)"
+      }
+    ],
+    "skill": {
+      "path": "skill/SKILL.md"
+    }
   }
 }
