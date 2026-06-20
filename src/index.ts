@@ -16,6 +16,7 @@ import { armSchedule } from "./exec/index";
 import { parse, resolve, type ResolveContext } from "./refs/index";
 import { deserialize, serialize, tokensOf } from "./ui/tokens";
 import { createRunbookView, type RunbookApi } from "./ui/view";
+import { setLang } from "./ui/i18n";
 
 type Disposable = { dispose: () => void };
 
@@ -84,6 +85,10 @@ interface PluginContext {
     network?: NetworkApi;
     ui?: UiApi;
     secrets?: SecretsApi;
+    /** 현재 UI 언어 코드("ko" | "en" 등). 선택적 — 없으면 기본값 사용. */
+    locale?: () => string;
+    /** 언어 변경 이벤트 구독. payload: { language: string }. */
+    on?: (event: string, cb: (payload: Record<string, unknown>) => void) => Disposable;
   };
   subscriptions: Disposable[];
 }
@@ -102,6 +107,20 @@ export default {
 
     // 컬렉션 3종 define(멱등).
     await defineCollections(data);
+
+    // i18n — 현재 언어 초기화 + 변경 구독.
+    if (app.locale) {
+      setLang(app.locale());
+    }
+    if (app.on) {
+      sub(
+        app.on("locale.changed", (payload) => {
+          if (typeof payload.language === "string") {
+            setLang(payload.language);
+          }
+        }),
+      );
+    }
 
     // ── 런북 뷰(우측 사이드바). 데이터 변경 → 전 창 mounts refresh(폴링 0). ──
     // mounts 는 마운트된 뷰 인스턴스 — data.watch 가 전 창에 refresh 라우팅.

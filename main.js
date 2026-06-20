@@ -602,9 +602,9 @@ async function executeNode(deps, rec, ctx, isRoot) {
     }
     const unresolved = [];
     const handles = [];
-    const resolveF = (t) => {
-      if (!t) return "";
-      const r = resolveTemplate(t, ctx);
+    const resolveF = (t2) => {
+      if (!t2) return "";
+      const r = resolveTemplate(t2, ctx);
       if (r.unresolved.length > 0) unresolved.push(...r.unresolved);
       handles.push(...r.handles);
       return r.text;
@@ -760,15 +760,15 @@ async function runCommand(deps, input) {
   };
 }
 function coerceOutput(out) {
-  const t = out.trim();
-  if (t === "") return "";
-  if (t[0] === "{" || t[0] === "[") {
+  const t2 = out.trim();
+  if (t2 === "") return "";
+  if (t2[0] === "{" || t2[0] === "[") {
     try {
-      return JSON.parse(t);
+      return JSON.parse(t2);
     } catch {
     }
   }
-  return t;
+  return t2;
 }
 async function record(data, root, type, output, exitCode, scope) {
   const now = Date.now();
@@ -803,8 +803,8 @@ function nextMonthly(scheduleAt, after) {
   for (let k = 1; k <= 1200; k++) {
     const d = new Date(scheduleAt);
     d.setMonth(d.getMonth() + k);
-    const t = d.getTime();
-    if (t > after) return t;
+    const t2 = d.getTime();
+    if (t2 > after) return t2;
   }
   return null;
 }
@@ -879,8 +879,7 @@ var scopeOf = (p) => typeof p.scope === "string" ? p.scope : void 0;
 function registerCommands(data, cmds, sub, runtime = {}) {
   const reg = (name, spec) => sub(cmds.register(name, spec));
   reg("runbook.command.add", {
-    description: "Add a runbook command. Required: label, command (template), executionType (terminal|script|background|schedule|api). Omit groupId to use the default group. Reference metadata in the command template is parsed and stored.",
-    triggers: { ko: "\uB7F0\uBD81 \uBA85\uB839 \uCD94\uAC00 \uCEE4\uB9E8\uB4DC \uB4F1\uB85D \uC791\uC5C5 \uCD94\uAC00 \uC2A4\uD06C\uB9BD\uD2B8 \uB4F1\uB85D" },
+    description: "\uB7F0\uBD81 \uBA85\uB839 \uCD94\uAC00. label\xB7command(\uD15C\uD50C\uB9BF)\xB7executionType(terminal|script|background|schedule|api) \uD544\uC218. groupId \uC0DD\uB7B5 \uC2DC \uAE30\uBCF8 \uADF8\uB8F9. command \uD15C\uD50C\uB9BF\uC758 Reference \uBA54\uD0C0\uB294 parse \uB85C \uCD94\uCD9C\xB7\uC800\uC7A5(\uAC80\uC99D\uC6A9).",
     params: {
       label: { type: "string", required: true },
       command: { type: "string", description: "\uC2E4\uD589 \uD15C\uD50C\uB9BF(\uC178 \uD0C0\uC785 \u2014 Reference \uD1A0\uD070 \uAC00\uB2A5). api \uB294 url \uC0AC\uC6A9" },
@@ -918,8 +917,7 @@ function registerCommands(data, cmds, sub, runtime = {}) {
     }
   });
   reg("runbook.command.get", {
-    description: "Fetch a single runbook command by id (includes Reference metadata). Returns TARGET_NOT_FOUND if missing.",
-    triggers: { ko: "\uB7F0\uBD81 \uBA85\uB839 \uC870\uD68C \uCEE4\uB9E8\uB4DC \uBCF4\uAE30 \uC791\uC5C5 \uD655\uC778" },
+    description: "\uBA85\uB839 1\uAC74 \uC870\uD68C(Reference \uBA54\uD0C0 \uD3EC\uD568). \uC5C6\uC73C\uBA74 TARGET_NOT_FOUND.",
     params: { commandId: { type: "string", required: true }, scope: { type: "string" } },
     returns: "{ command }",
     handler: async (p) => {
@@ -930,8 +928,7 @@ function registerCommands(data, cmds, sub, runtime = {}) {
     }
   });
   reg("runbook.command.refs", {
-    description: "Parse the command template and return its Reference metadata. For validation and display only \u2014 does not execute the command.",
-    triggers: { ko: "\uBA85\uB839 \uCC38\uC870 \uC870\uD68C \uB808\uD37C\uB7F0\uC2A4 \uBD84\uC11D \uD15C\uD50C\uB9BF \uD30C\uC2F1" },
+    description: "\uBA85\uB839\uC758 command \uD15C\uD50C\uB9BF\uC744 parse \uD574 Reference \uBA54\uD0C0\uB97C \uBC18\uD658(\uAC80\uC99D\xB7\uD45C\uC2DC\uC6A9 \u2014 \uC2E4\uD589 \uC544\uB2D8).",
     params: { commandId: { type: "string", required: true }, scope: { type: "string" } },
     returns: "{ refs }",
     handler: async (p) => {
@@ -944,8 +941,7 @@ function registerCommands(data, cmds, sub, runtime = {}) {
     }
   });
   reg("runbook.command.update", {
-    description: "Update a runbook command (merge \u2014 omitted fields retain existing values). Re-extracts Reference metadata when command changes.",
-    triggers: { ko: "\uB7F0\uBD81 \uBA85\uB839 \uC218\uC815 \uCEE4\uB9E8\uB4DC \uC5C5\uB370\uC774\uD2B8 \uC791\uC5C5 \uBCC0\uACBD" },
+    description: "\uBA85\uB839 \uAC31\uC2E0(\uC804\uCCB4\uAD50\uCCB4 \u2014 \uB204\uB77D \uD544\uB4DC\uB294 \uAE30\uC874 \uBCF4\uC874). command \uBCC0\uACBD \uC2DC Reference \uBA54\uD0C0 \uC7AC\uCD94\uCD9C.",
     params: {
       commandId: { type: "string", required: true },
       label: { type: "string" },
@@ -981,8 +977,7 @@ function registerCommands(data, cmds, sub, runtime = {}) {
     }
   });
   reg("runbook.command.delete", {
-    description: "Move a runbook command to trash (soft delete \u2014 sets deleted=true). Recoverable via restore.",
-    triggers: { ko: "\uB7F0\uBD81 \uBA85\uB839 \uC0AD\uC81C \uCEE4\uB9E8\uB4DC \uC9C0\uC6B0\uAE30 \uC791\uC5C5 \uC0AD\uC81C" },
+    description: "\uBA85\uB839 \uD734\uC9C0\uD1B5\uC73C\uB85C(\uC18C\uD504\uD2B8 \uC0AD\uC81C \u2014 boolean deleted). \uBCF5\uC6D0 \uAC00\uB2A5.",
     params: { commandId: { type: "string", required: true }, scope: { type: "string" } },
     returns: "{ commandId }",
     handler: async (p) => {
@@ -1000,8 +995,7 @@ function registerCommands(data, cmds, sub, runtime = {}) {
     }
   });
   reg("runbook.command.restore", {
-    description: "Restore a trashed runbook command (sets deleted=false). Re-arms schedule if applicable.",
-    triggers: { ko: "\uB7F0\uBD81 \uBA85\uB839 \uBCF5\uC6D0 \uCEE4\uB9E8\uB4DC \uBCF5\uAD6C \uC0AD\uC81C \uCDE8\uC18C" },
+    description: "\uD734\uC9C0\uD1B5\uC758 \uBA85\uB839 \uBCF5\uC6D0(deleted=false).",
     params: { commandId: { type: "string", required: true }, scope: { type: "string" } },
     returns: "{ commandId }",
     handler: async (p) => {
@@ -1020,8 +1014,7 @@ function registerCommands(data, cmds, sub, runtime = {}) {
     }
   });
   reg("runbook.command.duplicate", {
-    description: "Duplicate a runbook command (new id, label suffixed with \' (copy)\', not trashed, appended to end of order).",
-    triggers: { ko: "런북 명령 복제 커맨드 복사 작업 복사" },
+    description: "\uBA85\uB839 \uBCF5\uC81C(\uC0C8 id, label \uC5D0 ' (\uBCF5\uC0AC)' \uC811\uBBF8, \uBE44\uD734\uC9C0\uD1B5\xB7order \uB9E8 \uB4A4).",
     params: { commandId: { type: "string", required: true }, scope: { type: "string" } },
     returns: "{ commandId }",
     handler: async (p) => {
@@ -1044,8 +1037,7 @@ function registerCommands(data, cmds, sub, runtime = {}) {
     }
   });
   reg("runbook.command.list", {
-    description: "List runbook commands (sorted by order). trash=true returns only trashed, favorite=true returns only favorites, groupId filters by group.",
-    triggers: { ko: "런북 명령 목록 커맨드 리스트 작업 조회" },
+    description: "\uBA85\uB839 \uBAA9\uB85D(order \uC21C). trash=true \uD734\uC9C0\uD1B5\uB9CC, favorite=true \uC990\uACA8\uCC3E\uAE30\uB9CC, groupId \uC9C0\uC815 \uC2DC \uD574\uB2F9 \uADF8\uB8F9.",
     params: {
       trash: { type: "boolean" },
       favorite: { type: "boolean" },
@@ -1068,8 +1060,7 @@ function registerCommands(data, cmds, sub, runtime = {}) {
     }
   });
   reg("runbook.command.search", {
-    description: "Full-text search runbook commands by label and command template (CJK-aware). Excludes trashed items.",
-    triggers: { ko: "런북 명령 검색 커맨드 찾기 작업 검색" },
+    description: "\uBA85\uB839 CJK \uC804\uBB38\uAC80\uC0C9(label\xB7command). \uD734\uC9C0\uD1B5 \uC81C\uC678.",
     params: {
       query: { type: "string", required: true },
       limit: { type: "number" },
@@ -1086,8 +1077,7 @@ function registerCommands(data, cmds, sub, runtime = {}) {
     }
   });
   reg("runbook.command.set-group", {
-    description: "Move a runbook command to a different group.",
-    triggers: { ko: "명령 그룹 이동 커맨드 그룹 변경 작업 분류" },
+    description: "\uBA85\uB839\uC744 \uB2E4\uB978 \uADF8\uB8F9\uC73C\uB85C \uC774\uB3D9.",
     params: {
       commandId: { type: "string", required: true },
       groupId: { type: "string", required: true },
@@ -1107,8 +1097,7 @@ function registerCommands(data, cmds, sub, runtime = {}) {
     }
   });
   reg("runbook.command.favorite", {
-    description: "Toggle favorite on a runbook command (adds if not set, removes if already set).",
-    triggers: { ko: "즐겨찾기 토글 즐겨찾기 추가 즐겨찾기 해제 북마크" },
+    description: "\uC990\uACA8\uCC3E\uAE30 \uD1A0\uAE00(\uC788\uC73C\uBA74 \uD574\uC81C, \uC5C6\uC73C\uBA74 \uC124\uC815).",
     params: { commandId: { type: "string", required: true }, scope: { type: "string" } },
     returns: "{ commandId, favorite }",
     handler: async (p) => {
@@ -1124,8 +1113,7 @@ function registerCommands(data, cmds, sub, runtime = {}) {
     }
   });
   reg("runbook.command.run", {
-    description: "Execute a runbook command. Command references are resolved in dependency order (linking). Circular deps return CYCLE; missing refs return UNRESOLVED. script/background executes in a shell (captures stdout/stderr/exitCode) — secret refs are injected as child env vars. terminal uses core term.exec (focused pane) — secrets alongside terminal are not supported (SECRET_PENDING). Result updates lastOutput/lastStatusCode/lastExecutedAt and creates a history record.",
-    triggers: { ko: "런북 명령 실행 커맨드 실행 작업 실행 스크립트 실행" },
+    description: "\uB7F0\uBD81 \uBA85\uB839 \uC2E4\uD589. command \uCC38\uC870\uB294 \uC704\uC0C1\uC21C\uC73C\uB85C \uBA3C\uC800 \uC2E4\uD589\u2192\uCD9C\uB825\uC744 \uB2E4\uC74C \uC785\uB825\uC73C\uB85C \uB418\uBA39\uC784(\uB9C1\uD0B9). \uC21C\uD658=CYCLE, \uBBF8\uD574\uC18C \uCC38\uC870=UNRESOLVED. script/background=\uC178 \uC2E4\uD589(stdout/stderr\xB7exitCode \uCEA1\uCC98) \u2014 secret \uCC38\uC870\uB294 \uC790\uC2DD env \uC8FC\uC785($SOKSAK_SECRET_N, \uD3C9\uBB38\uC740 Rust \uACBD\uACC4\uC5D0\uC11C\uB9CC\xB7history/lastOutput \uC5D4 \uD50C\uB808\uC774\uC2A4\uD640\uB354). terminal=\uCF54\uC5B4 term.exec(\uD3EC\uCEE4\uC2A4 pane) \u2014 secret \uB3D9\uBC18 \uC2DC SECRET_PENDING(ps \uB178\uCD9C \uC704\uD5D8\uC73C\uB85C \uBBF8\uC9C0\uC6D0). \uACB0\uACFC\uB294 lastOutput/lastStatusCode/lastExecutedAt \uAC31\uC2E0 + \uD788\uC2A4\uD1A0\uB9AC \uC790\uB3D9 \uAE30\uB85D.",
     params: {
       commandId: { type: "string", required: true },
       inputs: { type: "object", description: "\uD30C\uB77C\uBBF8\uD130 \uCE58\uD658 \uB9F5({name}\u2192\uAC12)" },
@@ -1161,8 +1149,7 @@ function registerCommands(data, cmds, sub, runtime = {}) {
     }
   });
   reg("runbook.schedule.fire", {
-    description: "Called by the core scheduler when a schedule command is due — executes the command and re-arms the next occurrence (repeat/interval). Does nothing if the command is deleted. Not intended for direct user invocation.",
-    triggers: { ko: "스케줄 실행 예약 실행 타이머 발화" },
+    description: "\uCF54\uC5B4 \uC2A4\uCF00\uC904\uB7EC\uAC00 due \uC2DC\uAC01\uC5D0 \uD638\uCD9C \u2014 schedule \uBA85\uB839\uC758 action(command \uD544\uB4DC, \uC178)\uC744 \uC2E4\uD589\uD558\uACE0 \uB2E4\uC74C occurrence \uB97C \uC7AC\uBB34\uC7A5\uD55C\uB2E4(\uBC18\uBCF5/\uAC04\uACA9). deleted \uBA74 \uBC1C\uD654\xB7\uC7AC\uBB34\uC7A5 0. \uC0AC\uC6A9\uC790 \uC9C1\uC811 \uD638\uCD9C \uB300\uC0C1 \uC544\uB2D8.",
     params: { commandId: { type: "string", required: true }, scope: { type: "string" } },
     returns: "{ ok, output, exitCode, historyId, nextAt? } | { ok:false, code }",
     handler: async (p) => {
@@ -1185,8 +1172,7 @@ function registerCommands(data, cmds, sub, runtime = {}) {
     }
   });
   reg("runbook.group.add", {
-    description: "Add a runbook command group. name is required; color (blue|red|green|orange|purple|gray) defaults to gray.",
-    triggers: { ko: "런북 그룹 추가 명령 그룹 만들기 그룹 생성" },
+    description: "\uADF8\uB8F9 \uCD94\uAC00. name \uD544\uC218, color(blue|red|green|orange|purple|gray) \uC0DD\uB7B5 \uC2DC gray.",
     params: {
       name: { type: "string", required: true },
       color: { type: "string" },
@@ -1209,8 +1195,7 @@ function registerCommands(data, cmds, sub, runtime = {}) {
     }
   });
   reg("runbook.group.update", {
-    description: "Update a runbook group name and/or color.",
-    triggers: { ko: "런북 그룹 수정 그룹 이름 변경 그룹 색 변경" },
+    description: "\uADF8\uB8F9 \uAC31\uC2E0(name\xB7color).",
     params: {
       groupId: { type: "string", required: true },
       name: { type: "string" },
@@ -1232,8 +1217,7 @@ function registerCommands(data, cmds, sub, runtime = {}) {
     }
   });
   reg("runbook.group.delete", {
-    description: "Hard-delete a runbook group. Member commands are reassigned to the default group (prevents orphaning). The default group is recreated if needed.",
-    triggers: { ko: "런북 그룹 삭제 그룹 제거" },
+    description: "\uADF8\uB8F9 \uC0AD\uC81C(\uD558\uB4DC). \uC18C\uC18D \uBA85\uB839\uC740 \uAE30\uBCF8 \uADF8\uB8F9\uC73C\uB85C \uC7AC\uBC30\uCE58(\uACE0\uC544 \uBC29\uC9C0). \uAE30\uBCF8 \uADF8\uB8F9\uC740 \uBCF4\uC7A5 \uD6C4 \uC7AC\uC0DD\uC131.",
     params: { groupId: { type: "string", required: true }, scope: { type: "string" } },
     returns: "{ groupId, reassigned }",
     handler: async (p) => {
@@ -1254,8 +1238,7 @@ function registerCommands(data, cmds, sub, runtime = {}) {
     }
   });
   reg("runbook.group.list", {
-    description: "List runbook groups (sorted by order). Ensures the default group exists, creating it if absent.",
-    triggers: { ko: "런북 그룹 목록 그룹 조회" },
+    description: "\uADF8\uB8F9 \uBAA9\uB85D(order \uC21C). \uAE30\uBCF8 \uADF8\uB8F9\uC744 \uBCF4\uC7A5(\uC5C6\uC73C\uBA74 \uC0DD\uC131).",
     params: { scope: { type: "string" } },
     returns: "{ groups }",
     handler: async (p) => {
@@ -1271,8 +1254,7 @@ function registerCommands(data, cmds, sub, runtime = {}) {
     }
   });
   reg("runbook.history.add", {
-    description: "Record a single execution history entry (label, command, type required; output, statusCode, commandId optional). Called by the runner internally but also exposed for headless testing.",
-    triggers: { ko: "실행 기록 추가 히스토리 추가 이력 등록" },
+    description: "\uC2E4\uD589 \uD788\uC2A4\uD1A0\uB9AC 1\uAC74 \uAE30\uB85D(label\xB7command\xB7type \uD544\uC218, output\xB7statusCode\xB7commandId \uC120\uD0DD). \uC2E4\uD589\uAE30\uAC00 \uD6C4\uC18D\uC5D0 \uD638\uCD9C\uD558\uB098, \uD5E4\uB4DC\uB9AC\uC2A4 \uAC80\uC99D\uC6A9\uC73C\uB85C\uB3C4 \uB178\uCD9C.",
     params: {
       label: { type: "string", required: true },
       command: { type: "string", required: true },
@@ -1299,8 +1281,7 @@ function registerCommands(data, cmds, sub, runtime = {}) {
     }
   });
   reg("runbook.history.list", {
-    description: "List execution history (newest first). trash=true returns only trashed entries; type filters by execution type.",
-    triggers: { ko: "실행 기록 목록 히스토리 조회 이력 목록" },
+    description: "\uD788\uC2A4\uD1A0\uB9AC \uBAA9\uB85D(\uCD5C\uC2E0\uC21C). trash=true \uD734\uC9C0\uD1B5\uB9CC, type \uC9C0\uC815 \uC2DC \uD574\uB2F9 \uC2E4\uD589\uD0C0\uC785\uB9CC.",
     params: {
       trash: { type: "boolean" },
       type: { type: "string" },
@@ -1319,8 +1300,7 @@ function registerCommands(data, cmds, sub, runtime = {}) {
     }
   });
   reg("runbook.history.search", {
-    description: "Full-text search execution history by label, command, and output (CJK-aware). Excludes trashed entries.",
-    triggers: { ko: "실행 기록 검색 히스토리 검색 이력 찾기" },
+    description: "\uD788\uC2A4\uD1A0\uB9AC CJK \uC804\uBB38\uAC80\uC0C9(label\xB7command\xB7output). \uD734\uC9C0\uD1B5 \uC81C\uC678.",
     params: {
       query: { type: "string", required: true },
       limit: { type: "number" },
@@ -1337,8 +1317,7 @@ function registerCommands(data, cmds, sub, runtime = {}) {
     }
   });
   reg("runbook.history.delete", {
-    description: "Move a history entry to trash (soft delete).",
-    triggers: { ko: "실행 기록 삭제 히스토리 삭제" },
+    description: "\uD788\uC2A4\uD1A0\uB9AC 1\uAC74 \uD734\uC9C0\uD1B5\uC73C\uB85C(\uC18C\uD504\uD2B8 \uC0AD\uC81C).",
     params: { historyId: { type: "string", required: true }, scope: { type: "string" } },
     returns: "{ historyId }",
     handler: async (p) => {
@@ -1353,8 +1332,7 @@ function registerCommands(data, cmds, sub, runtime = {}) {
     }
   });
   reg("runbook.history.restore", {
-    description: "Restore a trashed history entry.",
-    triggers: { ko: "실행 기록 복원 히스토리 복구" },
+    description: "\uD734\uC9C0\uD1B5\uC758 \uD788\uC2A4\uD1A0\uB9AC \uBCF5\uC6D0.",
     params: { historyId: { type: "string", required: true }, scope: { type: "string" } },
     returns: "{ historyId }",
     handler: async (p) => {
@@ -1369,8 +1347,7 @@ function registerCommands(data, cmds, sub, runtime = {}) {
     }
   });
   reg("runbook.history.clear", {
-    description: "Hard-delete all history entries. Set trashOnly=true to delete only trashed entries.",
-    triggers: { ko: "실행 기록 전체 삭제 히스토리 비우기 이력 초기화" },
+    description: "\uD788\uC2A4\uD1A0\uB9AC \uC804\uCCB4 \uC0AD\uC81C(\uD558\uB4DC). trashOnly=true \uBA74 \uD734\uC9C0\uD1B5\uB9CC.",
     params: { trashOnly: { type: "boolean" }, scope: { type: "string" } },
     returns: "{ deleted }",
     handler: async (p) => {
@@ -1382,8 +1359,7 @@ function registerCommands(data, cmds, sub, runtime = {}) {
     }
   });
   reg("runbook.export", {
-    description: "Export all runbook data (groups, commands, history) as JSONL. Each line is { kind, doc }. Plaintext secrets are never stored and therefore never appear in the export.",
-    triggers: { ko: "런북 내보내기 데이터 백업 전체 추출" },
+    description: "\uB7F0\uBD81 \uC804\uCCB4(\uADF8\uB8F9\xB7\uBA85\uB839\xB7\uD788\uC2A4\uD1A0\uB9AC) JSONL \uB0B4\uBCF4\uB0B4\uAE30. \uAC01 \uC904 = { kind, doc }. \uD3C9\uBB38 \uC2DC\uD06C\uB9BF\uC740 \uC800\uC7A5\uD558\uC9C0 \uC54A\uC73C\uBBC0\uB85C export \uC5D0\uB3C4 \uB4F1\uC7A5\uD558\uC9C0 \uC54A\uB294\uB2E4(R2).",
     params: { scope: { type: "string" } },
     returns: "{ jsonl, counts }",
     handler: async (p) => {
@@ -1408,8 +1384,7 @@ function registerCommands(data, cmds, sub, runtime = {}) {
     }
   });
   reg("runbook.import", {
-    description: "Import runbook data from JSONL (reverse of export). Each line { kind, doc } is put into its collection, preserving id (idempotent upsert).",
-    triggers: { ko: "런북 가져오기 데이터 복원 임포트" },
+    description: "JSONL \uAC00\uC838\uC624\uAE30(export \uC5ED). \uAC01 \uC904 { kind, doc } \uB97C \uCEEC\uB809\uC158\uC5D0 put(id \uBCF4\uC874 = \uBA71\uB4F1 upsert).",
     params: { jsonl: { type: "string", required: true }, scope: { type: "string" } },
     returns: "{ imported }",
     handler: async (p) => {
@@ -1422,11 +1397,11 @@ function registerCommands(data, cmds, sub, runtime = {}) {
       };
       let imported = 0;
       for (const line of p.jsonl.split("\n")) {
-        const t = line.trim();
-        if (!t) continue;
+        const t2 = line.trim();
+        if (!t2) continue;
         let parsed;
         try {
-          parsed = JSON.parse(t);
+          parsed = JSON.parse(t2);
         } catch {
           return err("INVALID_PARAMS", "JSONL \uD30C\uC2F1 \uC2E4\uD328");
         }
@@ -1442,34 +1417,34 @@ function registerCommands(data, cmds, sub, runtime = {}) {
 }
 
 // src/ui/tokens.ts
-function badgeLabel(t) {
-  const base = `${t.provider}#${t.key}`;
-  return t.jsonPath ? `${base}\xB7${t.jsonPath}` : base;
+function badgeLabel(t2) {
+  const base = `${t2.provider}#${t2.key}`;
+  return t2.jsonPath ? `${base}\xB7${t2.jsonPath}` : base;
 }
-function tokenToRaw(t) {
-  switch (t.provider) {
+function tokenToRaw(t2) {
+  switch (t2.provider) {
     case "param": {
-      const opts = t.options && t.options.length > 0 ? `:${t.options.join("|")}` : "";
-      return `{${t.key}${opts}}`;
+      const opts = t2.options && t2.options.length > 0 ? `:${t2.options.join("|")}` : "";
+      return `{${t2.key}${opts}}`;
     }
     case "env":
-      return `{{${t.key}}}`;
+      return `{{${t2.key}}}`;
     case "secret":
     case "command":
     case "clipboard":
     case "var": {
-      const path = t.jsonPath ? `|${t.jsonPath}` : "";
-      return `\`${t.provider}@${t.key}${path}\``;
+      const path = t2.jsonPath ? `|${t2.jsonPath}` : "";
+      return `\`${t2.provider}@${t2.key}${path}\``;
     }
     default:
       return "";
   }
 }
 function refToToken(ref) {
-  const t = { provider: ref.provider, key: ref.key, raw: ref.raw };
-  if (ref.jsonPath !== void 0) t.jsonPath = ref.jsonPath;
-  if (ref.options !== void 0) t.options = ref.options;
-  return t;
+  const t2 = { provider: ref.provider, key: ref.key, raw: ref.raw };
+  if (ref.jsonPath !== void 0) t2.jsonPath = ref.jsonPath;
+  if (ref.options !== void 0) t2.options = ref.options;
+  return t2;
 }
 function deserialize(template) {
   const { nodes } = parse(template);
@@ -1540,6 +1515,35 @@ function filterCandidates(candidates, query) {
     if (ap !== bp) return ap - bp;
     return a.localeCompare(b);
   });
+}
+
+// src/ui/i18n.ts
+var strings = {
+  searchPlaceholder: { en: "Search commands\u2026", ko: "\uBA85\uB839 \uAC80\uC0C9\u2026" },
+  addButtonTitle: { en: "Add command", ko: "\uBA85\uB839 \uCD94\uAC00" },
+  templatePlaceholder: { en: "Run template \u2014 {param} {{env}} `secret@key` \u2026", ko: "\uC2E4\uD589 \uD15C\uD50C\uB9BF \u2014 {param} {{env}} `secret@key` \u2026" },
+  labelFieldLabel: { en: "Label", ko: "\uB77C\uBCA8" },
+  labelFieldPlaceholder: { en: "e.g. Production deploy", ko: "\uC608: \uD504\uB85C\uB355\uC158 \uBC30\uD3EC" },
+  templateFieldLabel: { en: "Command template", ko: "\uBA85\uB839 \uD15C\uD50C\uB9BF" },
+  execTypeFieldLabel: { en: "Execution type", ko: "\uC2E4\uD589 \uD0C0\uC785" },
+  cancelButton: { en: "Cancel", ko: "\uCDE8\uC18C" },
+  saveButton: { en: "Save", ko: "\uC800\uC7A5" },
+  emptySearch: { en: "No results found", ko: "\uAC80\uC0C9 \uACB0\uACFC\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4" },
+  emptyCommands: { en: "No commands yet", ko: "\uC544\uC9C1 \uBA85\uB839\uC774 \uC5C6\uC2B5\uB2C8\uB2E4" },
+  emptyCommandsHint: { en: "Use + at top right to add your first command", ko: "\uC624\uB978\uCABD \uC704 + \uB85C \uCCAB \uBA85\uB839\uC744 \uCD94\uAC00\uD558\uC138\uC694" },
+  runButtonTitle: { en: "Run", ko: "\uC2E4\uD589" },
+  favoriteButtonTitle: { en: "Favorite", ko: "\uC990\uACA8\uCC3E\uAE30" },
+  editButtonTitle: { en: "Edit", ko: "\uD3B8\uC9D1" },
+  deleteButtonTitle: { en: "Delete", ko: "\uC0AD\uC81C" },
+  allGroups: { en: "All groups", ko: "\uC804\uCCB4 \uADF8\uB8F9" }
+};
+var _lang = "ko";
+function setLang(lang) {
+  _lang = lang;
+}
+function t(key) {
+  const entry = strings[key];
+  return entry[_lang] ?? entry["en"];
 }
 
 // src/ui/view.ts
@@ -1648,13 +1652,13 @@ function createRunbookView(app, mounts) {
       const searchInput = document.createElement("input");
       searchInput.className = "rb-search";
       searchInput.type = "text";
-      searchInput.placeholder = "\uBA85\uB839 \uAC80\uC0C9\u2026";
+      searchInput.placeholder = t("searchPlaceholder");
       searchInput.dataset.node = "search-input";
       const addBtn = document.createElement("button");
       addBtn.className = "rb-add";
       addBtn.type = "button";
       addBtn.textContent = "+";
-      addBtn.title = "\uBA85\uB839 \uCD94\uAC00";
+      addBtn.title = t("addButtonTitle");
       addBtn.dataset.node = "command-add";
       row1.append(searchInput, addBtn);
       const groupSel = document.createElement("select");
@@ -1702,7 +1706,7 @@ function createRunbookView(app, mounts) {
         ed.contentEditable = "true";
         ed.spellcheck = false;
         ed.dataset.node = "command-input";
-        ed.dataset.ph = "\uC2E4\uD589 \uD15C\uD50C\uB9BF \u2014 {param} {{env}} `secret@key` \u2026";
+        ed.dataset.ph = t("templatePlaceholder");
         wrap.append(ed);
         const sugg = document.createElement("div");
         sugg.className = "rb-suggest";
@@ -1973,9 +1977,9 @@ function createRunbookView(app, mounts) {
             prev.remove();
           }
           if (next && next.nodeType === Node.TEXT_NODE && (next.textContent || "").replace(/​/g, "") === "") {
-            const t = next;
+            const t2 = next;
             placeCaretBefore(b);
-            t.remove();
+            t2.remove();
           }
           b.remove();
         }
@@ -1989,12 +1993,12 @@ function createRunbookView(app, mounts) {
           sel.addRange(r);
         }
         ed.addEventListener("click", (e) => {
-          const t = e.target;
-          if (t instanceof HTMLElement && t.classList.contains("rb-badge")) {
+          const t2 = e.target;
+          if (t2 instanceof HTMLElement && t2.classList.contains("rb-badge")) {
             const sel = window.getSelection();
             if (sel) {
               const r = document.createRange();
-              r.selectNode(t);
+              r.selectNode(t2);
               sel.removeAllRanges();
               sel.addRange(r);
             }
@@ -2024,7 +2028,7 @@ function createRunbookView(app, mounts) {
           el: wrap,
           editor: ed,
           getValue,
-          setValue: (t) => render(t),
+          setValue: (t2) => render(t2),
           focus: () => ed.focus()
         };
       }
@@ -2034,11 +2038,11 @@ function createRunbookView(app, mounts) {
         const form = document.createElement("div");
         form.className = "rb-form";
         form.dataset.node = existing ? "command-edit" : "command-form";
-        const labelField = field("\uB77C\uBCA8", () => {
+        const labelField = field(t("labelFieldLabel"), () => {
           const inp = document.createElement("input");
           inp.className = "rb-input";
           inp.type = "text";
-          inp.placeholder = "\uC608: \uD504\uB85C\uB355\uC158 \uBC30\uD3EC";
+          inp.placeholder = t("labelFieldPlaceholder");
           inp.dataset.node = "form-label";
           if (existing && typeof existing.label === "string") inp.value = existing.label;
           return inp;
@@ -2049,16 +2053,16 @@ function createRunbookView(app, mounts) {
         tmplField.className = "rb-field";
         const tl = document.createElement("div");
         tl.className = "rb-flabel";
-        tl.textContent = "\uBA85\uB839 \uD15C\uD50C\uB9BF";
+        tl.textContent = t("templateFieldLabel");
         tmplField.append(tl, editor.el);
-        const execField = field("\uC2E4\uD589 \uD0C0\uC785", () => {
+        const execField = field(t("execTypeFieldLabel"), () => {
           const sel = document.createElement("select");
           sel.className = "rb-select";
           sel.dataset.node = "form-exec";
-          for (const t of EXEC_TYPES) {
+          for (const t2 of EXEC_TYPES) {
             const o = document.createElement("option");
-            o.value = t;
-            o.textContent = t;
+            o.value = t2;
+            o.textContent = t2;
             sel.append(o);
           }
           if (existing && typeof existing.executionType === "string") {
@@ -2071,7 +2075,7 @@ function createRunbookView(app, mounts) {
         const cancel = document.createElement("button");
         cancel.className = "rb-fbtn";
         cancel.type = "button";
-        cancel.textContent = "\uCDE8\uC18C";
+        cancel.textContent = t("cancelButton");
         cancel.dataset.node = "form-cancel";
         cancel.addEventListener("click", () => {
           formHost.textContent = "";
@@ -2079,7 +2083,7 @@ function createRunbookView(app, mounts) {
         const save = document.createElement("button");
         save.className = "rb-fbtn primary";
         save.type = "button";
-        save.textContent = "\uC800\uC7A5";
+        save.textContent = t("saveButton");
         save.dataset.node = "form-save";
         save.addEventListener("click", async () => {
           const labelInp = labelField.querySelector("input");
@@ -2133,18 +2137,18 @@ function createRunbookView(app, mounts) {
           empty.className = "rb-empty";
           const icon = document.createElement("span");
           icon.innerHTML = "<svg width='40' height='40' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'><rect x='4' y='3' width='16' height='18' rx='2'/><path d='M8 7.5h8M8 11.5h8M8 15.5h5'/></svg>";
-          const t = document.createElement("div");
-          t.className = "rb-empty-t";
+          const t2 = document.createElement("div");
+          t2.className = "rb-empty-t";
           const h = document.createElement("div");
           h.className = "rb-empty-h";
           if (searchTerm) {
-            t.textContent = "\uAC80\uC0C9 \uACB0\uACFC\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4";
+            t2.textContent = t("emptySearch");
             h.textContent = `"${searchTerm}" \uC640 \uC77C\uCE58\uD558\uB294 \uBA85\uB839 \uC5C6\uC74C`;
           } else {
-            t.textContent = "\uC544\uC9C1 \uBA85\uB839\uC774 \uC5C6\uC2B5\uB2C8\uB2E4";
-            h.textContent = "\uC624\uB978\uCABD \uC704 + \uB85C \uCCAB \uBA85\uB839\uC744 \uCD94\uAC00\uD558\uC138\uC694";
+            t2.textContent = t("emptyCommands");
+            h.textContent = t("emptyCommandsHint");
           }
-          empty.append(icon, t, h);
+          empty.append(icon, t2, h);
           listEl.append(empty);
           return;
         }
@@ -2165,22 +2169,22 @@ function createRunbookView(app, mounts) {
           exec.textContent = String(c.executionType ?? "");
           meta.append(exec);
           main.append(label, meta);
-          const runB = iconBtn("\u25B6", "\uC2E4\uD589", "run-button/" + key, "rb-btn run");
+          const runB = iconBtn("\u25B6", t("runButtonTitle"), "run-button/" + key, "rb-btn run");
           runB.addEventListener("click", () => {
             void cmd("runbook.command.run", { commandId: c.id });
           });
           const favB = iconBtn(
             c.favorite ? "\u2605" : "\u2606",
-            "\uC990\uACA8\uCC3E\uAE30",
+            t("favoriteButtonTitle"),
             "command-fav/" + key,
             "rb-btn fav" + (c.favorite ? " on" : "")
           );
           favB.addEventListener("click", () => {
             void cmd("runbook.command.favorite", { commandId: c.id });
           });
-          const editB = iconBtn("\u270E", "\uD3B8\uC9D1", "command-edit/" + key, "rb-btn");
+          const editB = iconBtn("\u270E", t("editButtonTitle"), "command-edit/" + key, "rb-btn");
           editB.addEventListener("click", () => openForm(c));
-          const delB = iconBtn("\u2715", "\uC0AD\uC81C", "command-del/" + key, "rb-btn");
+          const delB = iconBtn("\u2715", t("deleteButtonTitle"), "command-del/" + key, "rb-btn");
           delB.addEventListener("click", () => {
             void cmd("runbook.command.delete", { commandId: c.id });
           });
@@ -2201,7 +2205,7 @@ function createRunbookView(app, mounts) {
         groupSel.textContent = "";
         const all = document.createElement("option");
         all.value = "";
-        all.textContent = "\uC804\uCCB4 \uADF8\uB8F9";
+        all.textContent = t("allGroups");
         groupSel.append(all);
         for (const g of groups) {
           const o = document.createElement("option");
@@ -2274,6 +2278,18 @@ var index_default = {
     const data = app.data;
     const cmds = app.commands;
     await defineCollections(data);
+    if (app.locale) {
+      setLang(app.locale());
+    }
+    if (app.on) {
+      sub(
+        app.on("locale.changed", (payload) => {
+          if (typeof payload.language === "string") {
+            setLang(payload.language);
+          }
+        })
+      );
+    }
     const mounts = /* @__PURE__ */ new Set();
     if (app.ui) {
       const viewApp = {

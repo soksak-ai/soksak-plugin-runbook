@@ -22,6 +22,7 @@ import {
   type BadgeToken,
   type Segment,
 } from "./tokens";
+import { t as tr } from "./i18n";
 
 const COMMANDS = "commands";
 const GROUPS = "groups";
@@ -173,13 +174,13 @@ export function createRunbookView(app: RunbookApi, mounts: Set<MountEntry>) {
       const searchInput = document.createElement("input");
       searchInput.className = "rb-search";
       searchInput.type = "text";
-      searchInput.placeholder = "명령 검색…";
+      searchInput.placeholder = tr("searchPlaceholder");
       searchInput.dataset.node = "search-input";
       const addBtn = document.createElement("button");
       addBtn.className = "rb-add";
       addBtn.type = "button";
       addBtn.textContent = "+";
-      addBtn.title = "명령 추가";
+      addBtn.title = tr("addButtonTitle");
       addBtn.dataset.node = "command-add";
       row1.append(searchInput, addBtn);
 
@@ -239,7 +240,7 @@ export function createRunbookView(app: RunbookApi, mounts: Set<MountEntry>) {
         ed.contentEditable = "true";
         ed.spellcheck = false;
         ed.dataset.node = "command-input";
-        ed.dataset.ph = "실행 템플릿 — {param} {{env}} `secret@key` …";
+        ed.dataset.ph = tr("templatePlaceholder");
         wrap.append(ed);
 
         // 드롭다운(자동완성) — absolute.
@@ -627,11 +628,11 @@ export function createRunbookView(app: RunbookApi, mounts: Set<MountEntry>) {
         form.className = "rb-form";
         form.dataset.node = existing ? "command-edit" : "command-form";
 
-        const labelField = field("라벨", () => {
+        const labelField = field(tr("labelFieldLabel"), () => {
           const inp = document.createElement("input");
           inp.className = "rb-input";
           inp.type = "text";
-          inp.placeholder = "예: 프로덕션 배포";
+          inp.placeholder = tr("labelFieldPlaceholder");
           inp.dataset.node = "form-label";
           if (existing && typeof existing.label === "string") inp.value = existing.label;
           return inp;
@@ -645,11 +646,11 @@ export function createRunbookView(app: RunbookApi, mounts: Set<MountEntry>) {
         tmplField.className = "rb-field";
         const tl = document.createElement("div");
         tl.className = "rb-flabel";
-        tl.textContent = "명령 템플릿";
+        tl.textContent = tr("templateFieldLabel");
         tmplField.append(tl, editor.el);
 
         // 실행 타입.
-        const execField = field("실행 타입", () => {
+        const execField = field(tr("execTypeFieldLabel"), () => {
           const sel = document.createElement("select");
           sel.className = "rb-select";
           sel.dataset.node = "form-exec";
@@ -670,7 +671,7 @@ export function createRunbookView(app: RunbookApi, mounts: Set<MountEntry>) {
         const cancel = document.createElement("button");
         cancel.className = "rb-fbtn";
         cancel.type = "button";
-        cancel.textContent = "취소";
+        cancel.textContent = tr("cancelButton");
         cancel.dataset.node = "form-cancel";
         cancel.addEventListener("click", () => {
           formHost.textContent = "";
@@ -678,7 +679,7 @@ export function createRunbookView(app: RunbookApi, mounts: Set<MountEntry>) {
         const save = document.createElement("button");
         save.className = "rb-fbtn primary";
         save.type = "button";
-        save.textContent = "저장";
+        save.textContent = tr("saveButton");
         save.dataset.node = "form-save";
         save.addEventListener("click", async () => {
           const labelInp = labelField.querySelector("input") as HTMLInputElement;
@@ -743,11 +744,11 @@ export function createRunbookView(app: RunbookApi, mounts: Set<MountEntry>) {
           const h = document.createElement("div");
           h.className = "rb-empty-h";
           if (searchTerm) {
-            t.textContent = "검색 결과가 없습니다";
+            t.textContent = tr("emptySearch");
             h.textContent = `"${searchTerm}" 와 일치하는 명령 없음`;
           } else {
-            t.textContent = "아직 명령이 없습니다";
-            h.textContent = "오른쪽 위 + 로 첫 명령을 추가하세요";
+            t.textContent = tr("emptyCommands");
+            h.textContent = tr("emptyCommandsHint");
           }
           empty.append(icon, t, h);
           listEl.append(empty);
@@ -772,22 +773,22 @@ export function createRunbookView(app: RunbookApi, mounts: Set<MountEntry>) {
           meta.append(exec);
           main.append(label, meta);
 
-          const runB = iconBtn("▶", "실행", "run-button/" + key, "rb-btn run");
+          const runB = iconBtn("▶", tr("runButtonTitle"), "run-button/" + key, "rb-btn run");
           runB.addEventListener("click", () => {
             void cmd("runbook.command.run", { commandId: c.id });
           });
           const favB = iconBtn(
             c.favorite ? "★" : "☆",
-            "즐겨찾기",
+            tr("favoriteButtonTitle"),
             "command-fav/" + key,
             "rb-btn fav" + (c.favorite ? " on" : ""),
           );
           favB.addEventListener("click", () => {
             void cmd("runbook.command.favorite", { commandId: c.id });
           });
-          const editB = iconBtn("✎", "편집", "command-edit/" + key, "rb-btn");
+          const editB = iconBtn("✎", tr("editButtonTitle"), "command-edit/" + key, "rb-btn");
           editB.addEventListener("click", () => openForm(c));
-          const delB = iconBtn("✕", "삭제", "command-del/" + key, "rb-btn");
+          const delB = iconBtn("✕", tr("deleteButtonTitle"), "command-del/" + key, "rb-btn");
           delB.addEventListener("click", () => {
             void cmd("runbook.command.delete", { commandId: c.id });
           });
@@ -811,7 +812,7 @@ export function createRunbookView(app: RunbookApi, mounts: Set<MountEntry>) {
         groupSel.textContent = "";
         const all = document.createElement("option");
         all.value = "";
-        all.textContent = "전체 그룹";
+        all.textContent = tr("allGroups");
         groupSel.append(all);
         for (const g of groups) {
           const o = document.createElement("option");
