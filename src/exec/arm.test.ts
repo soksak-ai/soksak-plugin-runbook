@@ -47,7 +47,7 @@ describe("armSchedule — 등록", () => {
     expect(ss.length).toBe(3); // fire + 2 리마인더
     const fire = ss.find((x) => x.params?.id === "runbook:c1");
     expect(fire?.params?.at).toBe(AT);
-    expect(fire?.params?.command).toBe("plugin.soksak-plugin-runbook.runbook.schedule.fire");
+    expect(fire?.params?.command).toBe("plugin.soksak-plugin-runbook.schedule.fire");
     expect((fire?.params?.params as { commandId: string }).commandId).toBe("c1");
     expect(ss.find((x) => x.params?.id === "runbook:c1:r0")?.params?.at).toBe(AT - 300_000);
     expect(ss.find((x) => x.params?.id === "runbook:c1:r1")?.params?.at).toBe(AT - 1_800_000);

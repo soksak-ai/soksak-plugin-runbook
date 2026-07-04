@@ -7,7 +7,7 @@
 // command 템플릿을 parse 해 Reference 메타를 추출·저장한다(검증·표시용).
 //
 // [인라인 배지 에디터] 토큰↔배지 직렬화·트리거 감지는 src/ui/tokens 순수 모듈(단일 파서 parse 재사용
-// R8). runbook.editor.tokens/serialize 로 헤드리스 노출(에디터 mount 무관 — 순수 검증).
+// R8). editor.tokens/serialize 로 헤드리스 노출(에디터 mount 무관 — 순수 검증).
 
 import { registerCommands } from "./commands/runbook";
 import { defineCollections, type DataApi } from "./data/store";
@@ -200,19 +200,19 @@ export default {
     // ── 인라인 배지 에디터 순수 로직 노출(에디터 mount 무관 — 헤드리스 검증 R7). ──
     // 토큰↔배지 직렬화는 src/ui/tokens(단일 파서 parse 재사용 R8). 시크릿 토큰은 key 만 — 평문 0(R2).
     sub(
-      cmds.register("runbook.editor.tokens", {
+      cmds.register("editor.tokens", {
         description:
           "저장형 토큰 문자열을 배지 토큰 배열로 역직렬화(텍스트 제외). 인라인 배지 에디터의 토큰 모델 검증용. 시크릿 토큰은 provider·key 만 — 평문 미보유(R2).",
         params: { text: { type: "string", required: true, description: "저장형 토큰 문자열" } },
         returns: "{ tokens: [{ provider, key, jsonPath?, options?, raw }] }",
         examples: [
-          `sok plugin.soksak-plugin-runbook.runbook.editor.tokens '{"text":"deploy {env:dev|prod} \\\`secret@token\\\`"}'`,
+          `sok plugin.soksak-plugin-runbook.editor.tokens '{"text":"deploy {env:dev|prod} \\\`secret@token\\\`"}'`,
         ],
         handler: (p) => ({ ok: true, tokens: tokensOf(String(p.text ?? "")) }),
       }),
     );
     sub(
-      cmds.register("runbook.editor.serialize", {
+      cmds.register("editor.serialize", {
         description:
           "배지 토큰/텍스트 세그먼트 배열을 저장형 토큰 문자열로 직렬화(에디터 저장 경로의 순수 노출). raw 가 없는 토큰은 provider 규약으로 합성. text 만 넘기면 역직렬화→재직렬화 왕복(항등 확인).",
         params: {

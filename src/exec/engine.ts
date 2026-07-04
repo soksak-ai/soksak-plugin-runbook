@@ -1,4 +1,4 @@
-// 실행 엔진 — runbook.command.run(commandId, inputs?). 링킹(command 참조 되먹임) + 타입별 실행.
+// 실행 엔진 — command.run(commandId, inputs?). 링킹(command 참조 되먹임) + 타입별 실행.
 //
 // 흐름:
 //   1. 루트 command 레코드 로드(app.data.get). 없으면 TARGET_NOT_FOUND.
@@ -166,7 +166,7 @@ async function executeNode(
   const type = rec.executionType;
 
   // schedule 의 발화 action 은 command 필드를 셸로 실행한다(script 와 동일 경로). 예약(arm)은 command.run
-  // 핸들러가 별도 처리하고, 코어 스케줄러가 발화할 때 runbook.schedule.fire→runCommand 로 여기 도달한다.
+  // 핸들러가 별도 처리하고, 코어 스케줄러가 발화할 때 schedule.fire→runCommand 로 여기 도달한다.
   if (type === "script" || type === "background" || type === "schedule") {
     const proc = deps.process;
     if (!proc) return { ok: false, code: "NO_RUNTIME", message: "process 표면 없음 — 셸 실행 불가" };

@@ -113,7 +113,7 @@ export function serialize(segs: Segment[]): string {
   return out;
 }
 
-/** 편의: 저장형 문자열 → 토큰 배열(텍스트 제외). 헤드리스 검증용(runbook.editor.tokens). */
+/** 편의: 저장형 문자열 → 토큰 배열(텍스트 제외). 헤드리스 검증용(editor.tokens). */
 export function tokensOf(template: string): BadgeToken[] {
   return deserialize(template)
     .filter((s): s is { kind: "badge"; token: BadgeToken } => s.kind === "badge")
