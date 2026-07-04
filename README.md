@@ -70,8 +70,8 @@ Core `app.data` only (SQLite, namespaced to this plugin) — no raw SQL. Collect
 `editor.tokens`/`editor.serialize`. Examples:
 
 ```
-sok plugin.soksak-plugin-runbook.runbook.command.add '{"label":"deploy","command":"make deploy {env:dev|prod}","executionType":"script"}'
-sok plugin.soksak-plugin-runbook.runbook.command.run '{"commandId":"<id>","inputs":{"env":"prod"}}'
+sok plugin.soksak-plugin-runbook.command.add '{"label":"deploy","command":"make deploy {env:dev|prod}","executionType":"script"}'
+sok plugin.soksak-plugin-runbook.command.run '{"commandId":"<id>","inputs":{"env":"prod"}}'
 ```
 
 ## Build / Test

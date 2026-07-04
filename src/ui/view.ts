@@ -3,7 +3,7 @@
 // [핵심 = 인라인 배지 입력 에디터] 명령 템플릿 입력을 contenteditable div 로 짓는다. 저장형 토큰은
 //   비편집 inline span(rb-badge, contenteditable=false)으로 그려 원자성을 준다(화살표 건너뛰기·
 //   Backspace 통째 삭제·클릭 전체선택). 시크릿 배지는 라벨만 — value 미보유(R2). 토큰↔배지 변환은
-//   src/ui/tokens 의 단일 파서(parse) 재사용(중복 0, R8). 저장은 직렬화 문자열을 runbook.command.update.
+//   src/ui/tokens 의 단일 파서(parse) 재사용(중복 0, R8). 저장은 직렬화 문자열을 command.update.
 //
 // [스타일] 색 토큰만(--fg/--fg2/--fg3·--bg·--acc·--bd/--bd-soft) — 하드코딩 색 0. 배지 type 색은
 //   color-mix 로 앱 토큰에서 파생(테마 자동 적응 — 슬롯 추가 0).
@@ -693,14 +693,14 @@ export function createRunbookView(app: RunbookApi, mounts: Set<MountEntry>) {
           }
           try {
             if (existing && typeof existing.id === "string") {
-              await cmd("runbook.command.update", {
+              await cmd("command.update", {
                 commandId: existing.id,
                 label,
                 command,
                 executionType,
               });
             } else {
-              await cmd("runbook.command.add", {
+              await cmd("command.add", {
                 label,
                 command,
                 executionType,
@@ -775,7 +775,7 @@ export function createRunbookView(app: RunbookApi, mounts: Set<MountEntry>) {
 
           const runB = iconBtn("▶", tr("runButtonTitle"), "run-button/" + key, "rb-btn run");
           runB.addEventListener("click", () => {
-            void cmd("runbook.command.run", { commandId: c.id });
+            void cmd("command.run", { commandId: c.id });
           });
           const favB = iconBtn(
             c.favorite ? "★" : "☆",
@@ -784,13 +784,13 @@ export function createRunbookView(app: RunbookApi, mounts: Set<MountEntry>) {
             "rb-btn fav" + (c.favorite ? " on" : ""),
           );
           favB.addEventListener("click", () => {
-            void cmd("runbook.command.favorite", { commandId: c.id });
+            void cmd("command.favorite", { commandId: c.id });
           });
           const editB = iconBtn("✎", tr("editButtonTitle"), "command-edit/" + key, "rb-btn");
           editB.addEventListener("click", () => openForm(c));
           const delB = iconBtn("✕", tr("deleteButtonTitle"), "command-del/" + key, "rb-btn");
           delB.addEventListener("click", () => {
-            void cmd("runbook.command.delete", { commandId: c.id });
+            void cmd("command.delete", { commandId: c.id });
           });
 
           row.append(main, runB, favB, editB, delB);

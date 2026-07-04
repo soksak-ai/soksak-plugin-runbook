@@ -826,7 +826,7 @@ function nextOccurrence(scheduleAt, repeat, intervalSec, after) {
 
 // src/exec/arm.ts
 var PLUGIN = "soksak-plugin-runbook";
-var FIRE_CMD = `plugin.${PLUGIN}.runbook.schedule.fire`;
+var FIRE_CMD = `plugin.${PLUGIN}.schedule.fire`;
 var fireId = (commandId) => `runbook:${commandId}`;
 var reminderId = (commandId, i) => `runbook:${commandId}:r${i}`;
 async function armSchedule(deps, rec, scope, now) {
@@ -878,7 +878,7 @@ var err = (code, message) => ({ ok: false, code, message });
 var scopeOf = (p) => typeof p.scope === "string" ? p.scope : void 0;
 function registerCommands(data, cmds, sub, runtime = {}) {
   const reg = (name, spec) => sub(cmds.register(name, spec));
-  reg("runbook.command.add", {
+  reg("command.add", {
     description: "\uB7F0\uBD81 \uBA85\uB839 \uCD94\uAC00. label\xB7command(\uD15C\uD50C\uB9BF)\xB7executionType(terminal|script|background|schedule|api) \uD544\uC218. groupId \uC0DD\uB7B5 \uC2DC \uAE30\uBCF8 \uADF8\uB8F9. command \uD15C\uD50C\uB9BF\uC758 Reference \uBA54\uD0C0\uB294 parse \uB85C \uCD94\uCD9C\xB7\uC800\uC7A5(\uAC80\uC99D\uC6A9).",
     params: {
       label: { type: "string", required: true },
@@ -900,8 +900,8 @@ function registerCommands(data, cmds, sub, runtime = {}) {
     },
     returns: "{ commandId, refs }",
     examples: [
-      `sok plugin.soksak-plugin-runbook.runbook.command.add '{"label":"\uBC30\uD3EC","command":"make deploy {env:dev|prod}","executionType":"script"}'`,
-      `sok plugin.soksak-plugin-runbook.runbook.command.add '{"label":"\uD551","executionType":"api","httpMethod":"GET","url":"https://api.example.com/v1/ping"}'`
+      `sok plugin.soksak-plugin-runbook.command.add '{"label":"\uBC30\uD3EC","command":"make deploy {env:dev|prod}","executionType":"script"}'`,
+      `sok plugin.soksak-plugin-runbook.command.add '{"label":"\uD551","executionType":"api","httpMethod":"GET","url":"https://api.example.com/v1/ping"}'`
     ],
     handler: async (p) => {
       const invalid = validateCommandInput(p);
@@ -916,7 +916,7 @@ function registerCommands(data, cmds, sub, runtime = {}) {
       return ok({ commandId, refs });
     }
   });
-  reg("runbook.command.get", {
+  reg("command.get", {
     description: "\uBA85\uB839 1\uAC74 \uC870\uD68C(Reference \uBA54\uD0C0 \uD3EC\uD568). \uC5C6\uC73C\uBA74 TARGET_NOT_FOUND.",
     params: { commandId: { type: "string", required: true }, scope: { type: "string" } },
     returns: "{ command }",
@@ -927,7 +927,7 @@ function registerCommands(data, cmds, sub, runtime = {}) {
       return ok({ command: rec });
     }
   });
-  reg("runbook.command.refs", {
+  reg("command.refs", {
     description: "\uBA85\uB839\uC758 command \uD15C\uD50C\uB9BF\uC744 parse \uD574 Reference \uBA54\uD0C0\uB97C \uBC18\uD658(\uAC80\uC99D\xB7\uD45C\uC2DC\uC6A9 \u2014 \uC2E4\uD589 \uC544\uB2D8).",
     params: { commandId: { type: "string", required: true }, scope: { type: "string" } },
     returns: "{ refs }",
@@ -940,7 +940,7 @@ function registerCommands(data, cmds, sub, runtime = {}) {
       return ok({ refs: extractRefs(commandRefText(rec)) });
     }
   });
-  reg("runbook.command.update", {
+  reg("command.update", {
     description: "\uBA85\uB839 \uAC31\uC2E0(\uC804\uCCB4\uAD50\uCCB4 \u2014 \uB204\uB77D \uD544\uB4DC\uB294 \uAE30\uC874 \uBCF4\uC874). command \uBCC0\uACBD \uC2DC Reference \uBA54\uD0C0 \uC7AC\uCD94\uCD9C.",
     params: {
       commandId: { type: "string", required: true },
@@ -976,7 +976,7 @@ function registerCommands(data, cmds, sub, runtime = {}) {
       return ok({ commandId: p.commandId, refs });
     }
   });
-  reg("runbook.command.delete", {
+  reg("command.delete", {
     description: "\uBA85\uB839 \uD734\uC9C0\uD1B5\uC73C\uB85C(\uC18C\uD504\uD2B8 \uC0AD\uC81C \u2014 boolean deleted). \uBCF5\uC6D0 \uAC00\uB2A5.",
     params: { commandId: { type: "string", required: true }, scope: { type: "string" } },
     returns: "{ commandId }",
@@ -994,7 +994,7 @@ function registerCommands(data, cmds, sub, runtime = {}) {
       return ok({ commandId: p.commandId });
     }
   });
-  reg("runbook.command.restore", {
+  reg("command.restore", {
     description: "\uD734\uC9C0\uD1B5\uC758 \uBA85\uB839 \uBCF5\uC6D0(deleted=false).",
     params: { commandId: { type: "string", required: true }, scope: { type: "string" } },
     returns: "{ commandId }",
@@ -1013,7 +1013,7 @@ function registerCommands(data, cmds, sub, runtime = {}) {
       return ok({ commandId: p.commandId });
     }
   });
-  reg("runbook.command.duplicate", {
+  reg("command.duplicate", {
     description: "\uBA85\uB839 \uBCF5\uC81C(\uC0C8 id, label \uC5D0 ' (\uBCF5\uC0AC)' \uC811\uBBF8, \uBE44\uD734\uC9C0\uD1B5\xB7order \uB9E8 \uB4A4).",
     params: { commandId: { type: "string", required: true }, scope: { type: "string" } },
     returns: "{ commandId }",
@@ -1036,7 +1036,7 @@ function registerCommands(data, cmds, sub, runtime = {}) {
       return ok({ commandId });
     }
   });
-  reg("runbook.command.list", {
+  reg("command.list", {
     description: "\uBA85\uB839 \uBAA9\uB85D(order \uC21C). trash=true \uD734\uC9C0\uD1B5\uB9CC, favorite=true \uC990\uACA8\uCC3E\uAE30\uB9CC, groupId \uC9C0\uC815 \uC2DC \uD574\uB2F9 \uADF8\uB8F9.",
     params: {
       trash: { type: "boolean" },
@@ -1059,7 +1059,7 @@ function registerCommands(data, cmds, sub, runtime = {}) {
       return ok({ commands });
     }
   });
-  reg("runbook.command.search", {
+  reg("command.search", {
     description: "\uBA85\uB839 CJK \uC804\uBB38\uAC80\uC0C9(label\xB7command). \uD734\uC9C0\uD1B5 \uC81C\uC678.",
     params: {
       query: { type: "string", required: true },
@@ -1076,7 +1076,7 @@ function registerCommands(data, cmds, sub, runtime = {}) {
       return ok({ commands: hits.filter((c) => !c.deleted) });
     }
   });
-  reg("runbook.command.set-group", {
+  reg("command.set-group", {
     description: "\uBA85\uB839\uC744 \uB2E4\uB978 \uADF8\uB8F9\uC73C\uB85C \uC774\uB3D9.",
     params: {
       commandId: { type: "string", required: true },
@@ -1096,7 +1096,7 @@ function registerCommands(data, cmds, sub, runtime = {}) {
       return ok({ commandId: p.commandId, groupId: p.groupId });
     }
   });
-  reg("runbook.command.favorite", {
+  reg("command.favorite", {
     description: "\uC990\uACA8\uCC3E\uAE30 \uD1A0\uAE00(\uC788\uC73C\uBA74 \uD574\uC81C, \uC5C6\uC73C\uBA74 \uC124\uC815).",
     params: { commandId: { type: "string", required: true }, scope: { type: "string" } },
     returns: "{ commandId, favorite }",
@@ -1112,7 +1112,7 @@ function registerCommands(data, cmds, sub, runtime = {}) {
       return ok({ commandId: p.commandId, favorite });
     }
   });
-  reg("runbook.command.run", {
+  reg("command.run", {
     description: "\uB7F0\uBD81 \uBA85\uB839 \uC2E4\uD589. command \uCC38\uC870\uB294 \uC704\uC0C1\uC21C\uC73C\uB85C \uBA3C\uC800 \uC2E4\uD589\u2192\uCD9C\uB825\uC744 \uB2E4\uC74C \uC785\uB825\uC73C\uB85C \uB418\uBA39\uC784(\uB9C1\uD0B9). \uC21C\uD658=CYCLE, \uBBF8\uD574\uC18C \uCC38\uC870=UNRESOLVED. script/background=\uC178 \uC2E4\uD589(stdout/stderr\xB7exitCode \uCEA1\uCC98) \u2014 secret \uCC38\uC870\uB294 \uC790\uC2DD env \uC8FC\uC785($SOKSAK_SECRET_N, \uD3C9\uBB38\uC740 Rust \uACBD\uACC4\uC5D0\uC11C\uB9CC\xB7history/lastOutput \uC5D4 \uD50C\uB808\uC774\uC2A4\uD640\uB354). terminal=\uCF54\uC5B4 term.exec(\uD3EC\uCEE4\uC2A4 pane) \u2014 secret \uB3D9\uBC18 \uC2DC SECRET_PENDING(ps \uB178\uCD9C \uC704\uD5D8\uC73C\uB85C \uBBF8\uC9C0\uC6D0). \uACB0\uACFC\uB294 lastOutput/lastStatusCode/lastExecutedAt \uAC31\uC2E0 + \uD788\uC2A4\uD1A0\uB9AC \uC790\uB3D9 \uAE30\uB85D.",
     params: {
       commandId: { type: "string", required: true },
@@ -1122,8 +1122,8 @@ function registerCommands(data, cmds, sub, runtime = {}) {
     },
     returns: "{ ok, output, exitCode, historyId } | { ok:false, code:CYCLE|UNRESOLVED|SECRET_PENDING|TARGET_NOT_FOUND|NO_RUNTIME|EXEC_ERROR }",
     examples: [
-      `sok plugin.soksak-plugin-runbook.runbook.command.run '{"commandId":"abc"}'`,
-      `sok plugin.soksak-plugin-runbook.runbook.command.run '{"commandId":"abc","inputs":{"env":"prod"}}'`
+      `sok plugin.soksak-plugin-runbook.command.run '{"commandId":"abc"}'`,
+      `sok plugin.soksak-plugin-runbook.command.run '{"commandId":"abc","inputs":{"env":"prod"}}'`
     ],
     handler: async (p) => {
       if (typeof p.commandId !== "string") return err("INVALID_PARAMS", "commandId \uD544\uC694");
@@ -1148,7 +1148,7 @@ function registerCommands(data, cmds, sub, runtime = {}) {
       return result;
     }
   });
-  reg("runbook.schedule.fire", {
+  reg("schedule.fire", {
     description: "\uCF54\uC5B4 \uC2A4\uCF00\uC904\uB7EC\uAC00 due \uC2DC\uAC01\uC5D0 \uD638\uCD9C \u2014 schedule \uBA85\uB839\uC758 action(command \uD544\uB4DC, \uC178)\uC744 \uC2E4\uD589\uD558\uACE0 \uB2E4\uC74C occurrence \uB97C \uC7AC\uBB34\uC7A5\uD55C\uB2E4(\uBC18\uBCF5/\uAC04\uACA9). deleted \uBA74 \uBC1C\uD654\xB7\uC7AC\uBB34\uC7A5 0. \uC0AC\uC6A9\uC790 \uC9C1\uC811 \uD638\uCD9C \uB300\uC0C1 \uC544\uB2D8.",
     params: { commandId: { type: "string", required: true }, scope: { type: "string" } },
     returns: "{ ok, output, exitCode, historyId, nextAt? } | { ok:false, code }",
@@ -1171,7 +1171,7 @@ function registerCommands(data, cmds, sub, runtime = {}) {
       return armed.ok && armed.scheduled ? { ...result, nextAt: armed.nextAt } : result;
     }
   });
-  reg("runbook.group.add", {
+  reg("group.add", {
     description: "\uADF8\uB8F9 \uCD94\uAC00. name \uD544\uC218, color(blue|red|green|orange|purple|gray) \uC0DD\uB7B5 \uC2DC gray.",
     params: {
       name: { type: "string", required: true },
@@ -1194,7 +1194,7 @@ function registerCommands(data, cmds, sub, runtime = {}) {
       return ok({ groupId });
     }
   });
-  reg("runbook.group.update", {
+  reg("group.update", {
     description: "\uADF8\uB8F9 \uAC31\uC2E0(name\xB7color).",
     params: {
       groupId: { type: "string", required: true },
@@ -1216,7 +1216,7 @@ function registerCommands(data, cmds, sub, runtime = {}) {
       return ok({ groupId: p.groupId });
     }
   });
-  reg("runbook.group.delete", {
+  reg("group.delete", {
     description: "\uADF8\uB8F9 \uC0AD\uC81C(\uD558\uB4DC). \uC18C\uC18D \uBA85\uB839\uC740 \uAE30\uBCF8 \uADF8\uB8F9\uC73C\uB85C \uC7AC\uBC30\uCE58(\uACE0\uC544 \uBC29\uC9C0). \uAE30\uBCF8 \uADF8\uB8F9\uC740 \uBCF4\uC7A5 \uD6C4 \uC7AC\uC0DD\uC131.",
     params: { groupId: { type: "string", required: true }, scope: { type: "string" } },
     returns: "{ groupId, reassigned }",
@@ -1237,7 +1237,7 @@ function registerCommands(data, cmds, sub, runtime = {}) {
       return ok({ groupId: p.groupId, reassigned: orphans.length });
     }
   });
-  reg("runbook.group.list", {
+  reg("group.list", {
     description: "\uADF8\uB8F9 \uBAA9\uB85D(order \uC21C). \uAE30\uBCF8 \uADF8\uB8F9\uC744 \uBCF4\uC7A5(\uC5C6\uC73C\uBA74 \uC0DD\uC131).",
     params: { scope: { type: "string" } },
     returns: "{ groups }",
@@ -1253,7 +1253,7 @@ function registerCommands(data, cmds, sub, runtime = {}) {
       return ok({ groups });
     }
   });
-  reg("runbook.history.add", {
+  reg("history.add", {
     description: "\uC2E4\uD589 \uD788\uC2A4\uD1A0\uB9AC 1\uAC74 \uAE30\uB85D(label\xB7command\xB7type \uD544\uC218, output\xB7statusCode\xB7commandId \uC120\uD0DD). \uC2E4\uD589\uAE30\uAC00 \uD6C4\uC18D\uC5D0 \uD638\uCD9C\uD558\uB098, \uD5E4\uB4DC\uB9AC\uC2A4 \uAC80\uC99D\uC6A9\uC73C\uB85C\uB3C4 \uB178\uCD9C.",
     params: {
       label: { type: "string", required: true },
@@ -1280,7 +1280,7 @@ function registerCommands(data, cmds, sub, runtime = {}) {
       return ok({ historyId });
     }
   });
-  reg("runbook.history.list", {
+  reg("history.list", {
     description: "\uD788\uC2A4\uD1A0\uB9AC \uBAA9\uB85D(\uCD5C\uC2E0\uC21C). trash=true \uD734\uC9C0\uD1B5\uB9CC, type \uC9C0\uC815 \uC2DC \uD574\uB2F9 \uC2E4\uD589\uD0C0\uC785\uB9CC.",
     params: {
       trash: { type: "boolean" },
@@ -1299,7 +1299,7 @@ function registerCommands(data, cmds, sub, runtime = {}) {
       return ok({ history });
     }
   });
-  reg("runbook.history.search", {
+  reg("history.search", {
     description: "\uD788\uC2A4\uD1A0\uB9AC CJK \uC804\uBB38\uAC80\uC0C9(label\xB7command\xB7output). \uD734\uC9C0\uD1B5 \uC81C\uC678.",
     params: {
       query: { type: "string", required: true },
@@ -1316,7 +1316,7 @@ function registerCommands(data, cmds, sub, runtime = {}) {
       return ok({ history: hits.filter((h) => !h.deleted) });
     }
   });
-  reg("runbook.history.delete", {
+  reg("history.delete", {
     description: "\uD788\uC2A4\uD1A0\uB9AC 1\uAC74 \uD734\uC9C0\uD1B5\uC73C\uB85C(\uC18C\uD504\uD2B8 \uC0AD\uC81C).",
     params: { historyId: { type: "string", required: true }, scope: { type: "string" } },
     returns: "{ historyId }",
@@ -1331,7 +1331,7 @@ function registerCommands(data, cmds, sub, runtime = {}) {
       return ok({ historyId: p.historyId });
     }
   });
-  reg("runbook.history.restore", {
+  reg("history.restore", {
     description: "\uD734\uC9C0\uD1B5\uC758 \uD788\uC2A4\uD1A0\uB9AC \uBCF5\uC6D0.",
     params: { historyId: { type: "string", required: true }, scope: { type: "string" } },
     returns: "{ historyId }",
@@ -1346,7 +1346,7 @@ function registerCommands(data, cmds, sub, runtime = {}) {
       return ok({ historyId: p.historyId });
     }
   });
-  reg("runbook.history.clear", {
+  reg("history.clear", {
     description: "\uD788\uC2A4\uD1A0\uB9AC \uC804\uCCB4 \uC0AD\uC81C(\uD558\uB4DC). trashOnly=true \uBA74 \uD734\uC9C0\uD1B5\uB9CC.",
     params: { trashOnly: { type: "boolean" }, scope: { type: "string" } },
     returns: "{ deleted }",
@@ -1358,7 +1358,7 @@ function registerCommands(data, cmds, sub, runtime = {}) {
       return ok({ deleted: targets.length });
     }
   });
-  reg("runbook.export", {
+  reg("export", {
     description: "\uB7F0\uBD81 \uC804\uCCB4(\uADF8\uB8F9\xB7\uBA85\uB839\xB7\uD788\uC2A4\uD1A0\uB9AC) JSONL \uB0B4\uBCF4\uB0B4\uAE30. \uAC01 \uC904 = { kind, doc }. \uD3C9\uBB38 \uC2DC\uD06C\uB9BF\uC740 \uC800\uC7A5\uD558\uC9C0 \uC54A\uC73C\uBBC0\uB85C export \uC5D0\uB3C4 \uB4F1\uC7A5\uD558\uC9C0 \uC54A\uB294\uB2E4(R2).",
     params: { scope: { type: "string" } },
     returns: "{ jsonl, counts }",
@@ -1383,7 +1383,7 @@ function registerCommands(data, cmds, sub, runtime = {}) {
       });
     }
   });
-  reg("runbook.import", {
+  reg("import", {
     description: "JSONL \uAC00\uC838\uC624\uAE30(export \uC5ED). \uAC01 \uC904 { kind, doc } \uB97C \uCEEC\uB809\uC158\uC5D0 put(id \uBCF4\uC874 = \uBA71\uB4F1 upsert).",
     params: { jsonl: { type: "string", required: true }, scope: { type: "string" } },
     returns: "{ imported }",
@@ -2097,14 +2097,14 @@ function createRunbookView(app, mounts) {
           }
           try {
             if (existing && typeof existing.id === "string") {
-              await cmd("runbook.command.update", {
+              await cmd("command.update", {
                 commandId: existing.id,
                 label,
                 command,
                 executionType
               });
             } else {
-              await cmd("runbook.command.add", {
+              await cmd("command.add", {
                 label,
                 command,
                 executionType
@@ -2171,7 +2171,7 @@ function createRunbookView(app, mounts) {
           main.append(label, meta);
           const runB = iconBtn("\u25B6", t("runButtonTitle"), "run-button/" + key, "rb-btn run");
           runB.addEventListener("click", () => {
-            void cmd("runbook.command.run", { commandId: c.id });
+            void cmd("command.run", { commandId: c.id });
           });
           const favB = iconBtn(
             c.favorite ? "\u2605" : "\u2606",
@@ -2180,13 +2180,13 @@ function createRunbookView(app, mounts) {
             "rb-btn fav" + (c.favorite ? " on" : "")
           );
           favB.addEventListener("click", () => {
-            void cmd("runbook.command.favorite", { commandId: c.id });
+            void cmd("command.favorite", { commandId: c.id });
           });
           const editB = iconBtn("\u270E", t("editButtonTitle"), "command-edit/" + key, "rb-btn");
           editB.addEventListener("click", () => openForm(c));
           const delB = iconBtn("\u2715", t("deleteButtonTitle"), "command-del/" + key, "rb-btn");
           delB.addEventListener("click", () => {
-            void cmd("runbook.command.delete", { commandId: c.id });
+            void cmd("command.delete", { commandId: c.id });
           });
           row.append(main, runB, favB, editB, delB);
           listEl.append(row);
@@ -2348,18 +2348,18 @@ var index_default = {
       })
     );
     sub(
-      cmds.register("runbook.editor.tokens", {
+      cmds.register("editor.tokens", {
         description: "\uC800\uC7A5\uD615 \uD1A0\uD070 \uBB38\uC790\uC5F4\uC744 \uBC30\uC9C0 \uD1A0\uD070 \uBC30\uC5F4\uB85C \uC5ED\uC9C1\uB82C\uD654(\uD14D\uC2A4\uD2B8 \uC81C\uC678). \uC778\uB77C\uC778 \uBC30\uC9C0 \uC5D0\uB514\uD130\uC758 \uD1A0\uD070 \uBAA8\uB378 \uAC80\uC99D\uC6A9. \uC2DC\uD06C\uB9BF \uD1A0\uD070\uC740 provider\xB7key \uB9CC \u2014 \uD3C9\uBB38 \uBBF8\uBCF4\uC720(R2).",
         params: { text: { type: "string", required: true, description: "\uC800\uC7A5\uD615 \uD1A0\uD070 \uBB38\uC790\uC5F4" } },
         returns: "{ tokens: [{ provider, key, jsonPath?, options?, raw }] }",
         examples: [
-          `sok plugin.soksak-plugin-runbook.runbook.editor.tokens '{"text":"deploy {env:dev|prod} \\\`secret@token\\\`"}'`
+          `sok plugin.soksak-plugin-runbook.editor.tokens '{"text":"deploy {env:dev|prod} \\\`secret@token\\\`"}'`
         ],
         handler: (p) => ({ ok: true, tokens: tokensOf(String(p.text ?? "")) })
       })
     );
     sub(
-      cmds.register("runbook.editor.serialize", {
+      cmds.register("editor.serialize", {
         description: "\uBC30\uC9C0 \uD1A0\uD070/\uD14D\uC2A4\uD2B8 \uC138\uADF8\uBA3C\uD2B8 \uBC30\uC5F4\uC744 \uC800\uC7A5\uD615 \uD1A0\uD070 \uBB38\uC790\uC5F4\uB85C \uC9C1\uB82C\uD654(\uC5D0\uB514\uD130 \uC800\uC7A5 \uACBD\uB85C\uC758 \uC21C\uC218 \uB178\uCD9C). raw \uAC00 \uC5C6\uB294 \uD1A0\uD070\uC740 provider \uADDC\uC57D\uC73C\uB85C \uD569\uC131. text \uB9CC \uB118\uAE30\uBA74 \uC5ED\uC9C1\uB82C\uD654\u2192\uC7AC\uC9C1\uB82C\uD654 \uC655\uBCF5(\uD56D\uB4F1 \uD655\uC778).",
         params: {
           text: { type: "string", description: "\uC800\uC7A5\uD615 \uBB38\uC790\uC5F4(\uC655\uBCF5 \uAC80\uC99D\uC6A9)" },

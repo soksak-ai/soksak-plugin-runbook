@@ -14,7 +14,7 @@ export interface ScheduleDeps {
 }
 
 const PLUGIN = "soksak-plugin-runbook";
-const FIRE_CMD = `plugin.${PLUGIN}.runbook.schedule.fire`;
+const FIRE_CMD = `plugin.${PLUGIN}.schedule.fire`;
 const fireId = (commandId: string) => `runbook:${commandId}`;
 const reminderId = (commandId: string, i: number) => `runbook:${commandId}:r${i}`;
 

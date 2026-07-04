@@ -15,14 +15,14 @@ Names/params evolve — never guess. List the live surface:
 sok commands | grep plugin.soksak-plugin-runbook
 ```
 
-`runbook.command.list scope=global` (or `project`) reads entries; `runbook.command.get commandId=<id>` returns one.
+`command.list scope=global` (or `project`) reads entries; `command.get commandId=<id>` returns one.
 
 ## Mental model
 
 - **`scope`** is the first thing to decide: `global` (available everywhere) vs `project` (this project only). Most commands take `scope`; pass it explicitly.
 - **An entry = `label` + `command`/`url` + `executionType`** (shell, http, …) + optional `groupId`, `favorite`, schedule fields.
-- **References link entries.** A command body can contain `{{...}}` templates. `ref.parse template='…'` extracts the references in a template; `ref.resolve context=… template='…'` fills them in. `runbook.command.refs commandId=<id>` lists what one entry references — this is the dependency graph (cycles are rejected).
-- **Scheduling**: entries carry `repeatType`/`intervalSec`/`scheduleAt`; `runbook.schedule.fire commandId=<id>` triggers one now. `reminderSecs` drives reminders.
+- **References link entries.** A command body can contain `{{...}}` templates. `ref.parse template='…'` extracts the references in a template; `ref.resolve context=… template='…'` fills them in. `command.refs commandId=<id>` lists what one entry references — this is the dependency graph (cycles are rejected).
+- **Scheduling**: entries carry `repeatType`/`intervalSec`/`scheduleAt`; `schedule.fire commandId=<id>` triggers one now. `reminderSecs` drives reminders.
 - **History** records each run (output, statusCode, type); it has its own list/search/trash/restore, separate from entries.
 
 ## Core workflow
@@ -37,7 +37,7 @@ sok plugin.soksak-plugin-runbook.command.run commandId=<id> scope=project
 sok plugin.soksak-plugin-runbook.history.list scope=project limit=20
 ```
 
-For chained entries, author the body with `{{...}}` and check `runbook.command.refs` before running so the graph resolves.
+For chained entries, author the body with `{{...}}` and check `command.refs` before running so the graph resolves.
 
 ## Conventions
 

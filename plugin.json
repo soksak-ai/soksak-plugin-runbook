@@ -110,175 +110,175 @@
     ],
     "commands": [
       {
-        "name": "runbook.command.add",
+        "name": "command.add",
         "title": {
           "ko": "명령 추가",
           "en": "Add Command"
         }
       },
       {
-        "name": "runbook.command.get",
+        "name": "command.get",
         "title": {
           "ko": "명령 조회",
           "en": "Get Command"
         }
       },
       {
-        "name": "runbook.command.refs",
+        "name": "command.refs",
         "title": {
           "ko": "명령 Reference 추출",
           "en": "Extract Command Refs"
         }
       },
       {
-        "name": "runbook.command.update",
+        "name": "command.update",
         "title": {
           "ko": "명령 갱신",
           "en": "Update Command"
         }
       },
       {
-        "name": "runbook.command.delete",
+        "name": "command.delete",
         "title": {
           "ko": "명령 삭제(소프트)",
           "en": "Delete Command (soft)"
         }
       },
       {
-        "name": "runbook.command.restore",
+        "name": "command.restore",
         "title": {
           "ko": "명령 복원",
           "en": "Restore Command"
         }
       },
       {
-        "name": "runbook.command.duplicate",
+        "name": "command.duplicate",
         "title": {
           "ko": "명령 복제",
           "en": "Duplicate Command"
         }
       },
       {
-        "name": "runbook.command.list",
+        "name": "command.list",
         "title": {
           "ko": "명령 목록",
           "en": "List Commands"
         }
       },
       {
-        "name": "runbook.command.search",
+        "name": "command.search",
         "title": {
           "ko": "명령 검색",
           "en": "Search Commands"
         }
       },
       {
-        "name": "runbook.command.set-group",
+        "name": "command.set-group",
         "title": {
           "ko": "명령 그룹 이동",
           "en": "Move Command to Group"
         }
       },
       {
-        "name": "runbook.command.favorite",
+        "name": "command.favorite",
         "title": {
           "ko": "명령 즐겨찾기 토글",
           "en": "Toggle Command Favorite"
         }
       },
       {
-        "name": "runbook.command.run",
+        "name": "command.run",
         "title": {
           "ko": "명령 실행(링킹·셸/터미널/api)",
           "en": "Run Command (link·shell/terminal/api)"
         }
       },
       {
-        "name": "runbook.schedule.fire",
+        "name": "schedule.fire",
         "title": {
           "ko": "일정 발화(스케줄러 호출)",
           "en": "Fire Schedule"
         }
       },
       {
-        "name": "runbook.group.add",
+        "name": "group.add",
         "title": {
           "ko": "그룹 추가",
           "en": "Add Group"
         }
       },
       {
-        "name": "runbook.group.update",
+        "name": "group.update",
         "title": {
           "ko": "그룹 갱신",
           "en": "Update Group"
         }
       },
       {
-        "name": "runbook.group.delete",
+        "name": "group.delete",
         "title": {
           "ko": "그룹 삭제",
           "en": "Delete Group"
         }
       },
       {
-        "name": "runbook.group.list",
+        "name": "group.list",
         "title": {
           "ko": "그룹 목록",
           "en": "List Groups"
         }
       },
       {
-        "name": "runbook.history.add",
+        "name": "history.add",
         "title": {
           "ko": "히스토리 기록",
           "en": "Record History"
         }
       },
       {
-        "name": "runbook.history.list",
+        "name": "history.list",
         "title": {
           "ko": "히스토리 목록",
           "en": "List History"
         }
       },
       {
-        "name": "runbook.history.search",
+        "name": "history.search",
         "title": {
           "ko": "히스토리 검색",
           "en": "Search History"
         }
       },
       {
-        "name": "runbook.history.delete",
+        "name": "history.delete",
         "title": {
           "ko": "히스토리 삭제(소프트)",
           "en": "Delete History (soft)"
         }
       },
       {
-        "name": "runbook.history.restore",
+        "name": "history.restore",
         "title": {
           "ko": "히스토리 복원",
           "en": "Restore History"
         }
       },
       {
-        "name": "runbook.history.clear",
+        "name": "history.clear",
         "title": {
           "ko": "히스토리 전체 삭제",
           "en": "Clear History"
         }
       },
       {
-        "name": "runbook.export",
+        "name": "export",
         "title": {
           "ko": "런북 내보내기(JSONL)",
           "en": "Export Runbook (JSONL)"
         }
       },
       {
-        "name": "runbook.import",
+        "name": "import",
         "title": {
           "ko": "런북 가져오기(JSONL)",
           "en": "Import Runbook (JSONL)"
@@ -299,14 +299,14 @@
         }
       },
       {
-        "name": "runbook.editor.tokens",
+        "name": "editor.tokens",
         "title": {
           "ko": "에디터 토큰 역직렬화(헤드리스)",
           "en": "Editor Deserialize Tokens (headless)"
         }
       },
       {
-        "name": "runbook.editor.serialize",
+        "name": "editor.serialize",
         "title": {
           "ko": "에디터 직렬화(헤드리스)",
           "en": "Editor Serialize (headless)"

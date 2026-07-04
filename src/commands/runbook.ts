@@ -80,7 +80,7 @@ export function registerCommands(
 
   // ── 명령(command) CRUD ──
 
-  reg("runbook.command.add", {
+  reg("command.add", {
     description:
       "런북 명령 추가. label·command(템플릿)·executionType(terminal|script|background|schedule|api) 필수. groupId 생략 시 기본 그룹. command 템플릿의 Reference 메타는 parse 로 추출·저장(검증용).",
     params: {
@@ -103,8 +103,8 @@ export function registerCommands(
     },
     returns: "{ commandId, refs }",
     examples: [
-      'sok plugin.soksak-plugin-runbook.runbook.command.add \'{"label":"배포","command":"make deploy {env:dev|prod}","executionType":"script"}\'',
-      'sok plugin.soksak-plugin-runbook.runbook.command.add \'{"label":"핑","executionType":"api","httpMethod":"GET","url":"https://api.example.com/v1/ping"}\'',
+      'sok plugin.soksak-plugin-runbook.command.add \'{"label":"배포","command":"make deploy {env:dev|prod}","executionType":"script"}\'',
+      'sok plugin.soksak-plugin-runbook.command.add \'{"label":"핑","executionType":"api","httpMethod":"GET","url":"https://api.example.com/v1/ping"}\'',
     ],
     handler: async (p) => {
       const invalid = validateCommandInput(p);
@@ -124,7 +124,7 @@ export function registerCommands(
     },
   });
 
-  reg("runbook.command.get", {
+  reg("command.get", {
     description: "명령 1건 조회(Reference 메타 포함). 없으면 TARGET_NOT_FOUND.",
     params: { commandId: { type: "string", required: true }, scope: { type: "string" } },
     returns: "{ command }",
@@ -136,7 +136,7 @@ export function registerCommands(
     },
   });
 
-  reg("runbook.command.refs", {
+  reg("command.refs", {
     description: "명령의 command 템플릿을 parse 해 Reference 메타를 반환(검증·표시용 — 실행 아님).",
     params: { commandId: { type: "string", required: true }, scope: { type: "string" } },
     returns: "{ refs }",
@@ -150,7 +150,7 @@ export function registerCommands(
     },
   });
 
-  reg("runbook.command.update", {
+  reg("command.update", {
     description:
       "명령 갱신(전체교체 — 누락 필드는 기존 보존). command 변경 시 Reference 메타 재추출.",
     params: {
@@ -190,7 +190,7 @@ export function registerCommands(
     },
   });
 
-  reg("runbook.command.delete", {
+  reg("command.delete", {
     description: "명령 휴지통으로(소프트 삭제 — boolean deleted). 복원 가능.",
     params: { commandId: { type: "string", required: true }, scope: { type: "string" } },
     returns: "{ commandId }",
@@ -210,7 +210,7 @@ export function registerCommands(
     },
   });
 
-  reg("runbook.command.restore", {
+  reg("command.restore", {
     description: "휴지통의 명령 복원(deleted=false).",
     params: { commandId: { type: "string", required: true }, scope: { type: "string" } },
     returns: "{ commandId }",
@@ -231,7 +231,7 @@ export function registerCommands(
     },
   });
 
-  reg("runbook.command.duplicate", {
+  reg("command.duplicate", {
     description: "명령 복제(새 id, label 에 ' (복사)' 접미, 비휴지통·order 맨 뒤).",
     params: { commandId: { type: "string", required: true }, scope: { type: "string" } },
     returns: "{ commandId }",
@@ -255,7 +255,7 @@ export function registerCommands(
     },
   });
 
-  reg("runbook.command.list", {
+  reg("command.list", {
     description:
       "명령 목록(order 순). trash=true 휴지통만, favorite=true 즐겨찾기만, groupId 지정 시 해당 그룹.",
     params: {
@@ -280,7 +280,7 @@ export function registerCommands(
     },
   });
 
-  reg("runbook.command.search", {
+  reg("command.search", {
     description: "명령 CJK 전문검색(label·command). 휴지통 제외.",
     params: {
       query: { type: "string", required: true },
@@ -298,7 +298,7 @@ export function registerCommands(
     },
   });
 
-  reg("runbook.command.set-group", {
+  reg("command.set-group", {
     description: "명령을 다른 그룹으로 이동.",
     params: {
       commandId: { type: "string", required: true },
@@ -319,7 +319,7 @@ export function registerCommands(
     },
   });
 
-  reg("runbook.command.favorite", {
+  reg("command.favorite", {
     description: "즐겨찾기 토글(있으면 해제, 없으면 설정).",
     params: { commandId: { type: "string", required: true }, scope: { type: "string" } },
     returns: "{ commandId, favorite }",
@@ -338,7 +338,7 @@ export function registerCommands(
 
   // ── 실행(run) — 링킹 + 셸/터미널 ──
 
-  reg("runbook.command.run", {
+  reg("command.run", {
     description:
       "런북 명령 실행. command 참조는 위상순으로 먼저 실행→출력을 다음 입력으로 되먹임(링킹). 순환=CYCLE, 미해소 참조=UNRESOLVED. script/background=셸 실행(stdout/stderr·exitCode 캡처) — secret 참조는 자식 env 주입($SOKSAK_SECRET_N, 평문은 Rust 경계에서만·history/lastOutput 엔 플레이스홀더). terminal=코어 term.exec(포커스 pane) — secret 동반 시 SECRET_PENDING(ps 노출 위험으로 미지원). 결과는 lastOutput/lastStatusCode/lastExecutedAt 갱신 + 히스토리 자동 기록.",
     params: {
@@ -350,8 +350,8 @@ export function registerCommands(
     returns:
       "{ ok, output, exitCode, historyId } | { ok:false, code:CYCLE|UNRESOLVED|SECRET_PENDING|TARGET_NOT_FOUND|NO_RUNTIME|EXEC_ERROR }",
     examples: [
-      'sok plugin.soksak-plugin-runbook.runbook.command.run \'{"commandId":"abc"}\'',
-      'sok plugin.soksak-plugin-runbook.runbook.command.run \'{"commandId":"abc","inputs":{"env":"prod"}}\'',
+      'sok plugin.soksak-plugin-runbook.command.run \'{"commandId":"abc"}\'',
+      'sok plugin.soksak-plugin-runbook.command.run \'{"commandId":"abc","inputs":{"env":"prod"}}\'',
     ],
     handler: async (p) => {
       if (typeof p.commandId !== "string") return err("INVALID_PARAMS", "commandId 필요");
@@ -386,7 +386,7 @@ export function registerCommands(
   });
 
   // ── schedule 발화(fire) — 코어 스케줄러가 due 시각에 호출. 사용자 직접 대상 아님(arm=command.run). ──
-  reg("runbook.schedule.fire", {
+  reg("schedule.fire", {
     description:
       "코어 스케줄러가 due 시각에 호출 — schedule 명령의 action(command 필드, 셸)을 실행하고 다음 occurrence 를 재무장한다(반복/간격). deleted 면 발화·재무장 0. 사용자 직접 호출 대상 아님.",
     params: { commandId: { type: "string", required: true }, scope: { type: "string" } },
@@ -415,7 +415,7 @@ export function registerCommands(
 
   // ── 그룹(group) CRUD ──
 
-  reg("runbook.group.add", {
+  reg("group.add", {
     description: "그룹 추가. name 필수, color(blue|red|green|orange|purple|gray) 생략 시 gray.",
     params: {
       name: { type: "string", required: true },
@@ -439,7 +439,7 @@ export function registerCommands(
     },
   });
 
-  reg("runbook.group.update", {
+  reg("group.update", {
     description: "그룹 갱신(name·color).",
     params: {
       groupId: { type: "string", required: true },
@@ -462,7 +462,7 @@ export function registerCommands(
     },
   });
 
-  reg("runbook.group.delete", {
+  reg("group.delete", {
     description:
       "그룹 삭제(하드). 소속 명령은 기본 그룹으로 재배치(고아 방지). 기본 그룹은 보장 후 재생성.",
     params: { groupId: { type: "string", required: true }, scope: { type: "string" } },
@@ -486,7 +486,7 @@ export function registerCommands(
     },
   });
 
-  reg("runbook.group.list", {
+  reg("group.list", {
     description: "그룹 목록(order 순). 기본 그룹을 보장(없으면 생성).",
     params: { scope: { type: "string" } },
     returns: "{ groups }",
@@ -505,7 +505,7 @@ export function registerCommands(
 
   // ── 히스토리(history) ──
 
-  reg("runbook.history.add", {
+  reg("history.add", {
     description:
       "실행 히스토리 1건 기록(label·command·type 필수, output·statusCode·commandId 선택). 실행기가 후속에 호출하나, 헤드리스 검증용으로도 노출.",
     params: {
@@ -538,7 +538,7 @@ export function registerCommands(
     },
   });
 
-  reg("runbook.history.list", {
+  reg("history.list", {
     description: "히스토리 목록(최신순). trash=true 휴지통만, type 지정 시 해당 실행타입만.",
     params: {
       trash: { type: "boolean" },
@@ -558,7 +558,7 @@ export function registerCommands(
     },
   });
 
-  reg("runbook.history.search", {
+  reg("history.search", {
     description: "히스토리 CJK 전문검색(label·command·output). 휴지통 제외.",
     params: {
       query: { type: "string", required: true },
@@ -576,7 +576,7 @@ export function registerCommands(
     },
   });
 
-  reg("runbook.history.delete", {
+  reg("history.delete", {
     description: "히스토리 1건 휴지통으로(소프트 삭제).",
     params: { historyId: { type: "string", required: true }, scope: { type: "string" } },
     returns: "{ historyId }",
@@ -592,7 +592,7 @@ export function registerCommands(
     },
   });
 
-  reg("runbook.history.restore", {
+  reg("history.restore", {
     description: "휴지통의 히스토리 복원.",
     params: { historyId: { type: "string", required: true }, scope: { type: "string" } },
     returns: "{ historyId }",
@@ -608,7 +608,7 @@ export function registerCommands(
     },
   });
 
-  reg("runbook.history.clear", {
+  reg("history.clear", {
     description: "히스토리 전체 삭제(하드). trashOnly=true 면 휴지통만.",
     params: { trashOnly: { type: "boolean" }, scope: { type: "string" } },
     returns: "{ deleted }",
@@ -623,7 +623,7 @@ export function registerCommands(
 
   // ── export / import (JSONL 왕복) ──
 
-  reg("runbook.export", {
+  reg("export", {
     description:
       "런북 전체(그룹·명령·히스토리) JSONL 내보내기. 각 줄 = { kind, doc }. 평문 시크릿은 저장하지 않으므로 export 에도 등장하지 않는다(R2).",
     params: { scope: { type: "string" } },
@@ -650,7 +650,7 @@ export function registerCommands(
     },
   });
 
-  reg("runbook.import", {
+  reg("import", {
     description:
       "JSONL 가져오기(export 역). 각 줄 { kind, doc } 를 컬렉션에 put(id 보존 = 멱등 upsert).",
     params: { jsonl: { type: "string", required: true }, scope: { type: "string" } },
