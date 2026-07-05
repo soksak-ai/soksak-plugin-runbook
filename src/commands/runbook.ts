@@ -42,6 +42,7 @@ interface CommandsApi {
       params?: Record<string, unknown>;
       returns?: string;
       examples?: string[];
+      message?: (d: any) => string;
       handler: (params: Record<string, unknown>) => unknown;
     },
   ) => { dispose: () => void };
@@ -81,6 +82,7 @@ export function registerCommands(
   // ── 명령(command) CRUD ──
 
   reg("command.add", {
+    message: () => "명령을 추가했습니다.",
     description:
       "런북 명령 추가. label·command(템플릿)·executionType(terminal|script|background|schedule|api) 필수. groupId 생략 시 기본 그룹. command 템플릿의 Reference 메타는 parse 로 추출·저장(검증용).",
     params: {
@@ -125,6 +127,7 @@ export function registerCommands(
   });
 
   reg("command.get", {
+    message: (d) => `${d.command?.label ?? "명령"} 조회했습니다.`,
     description: "명령 1건 조회(Reference 메타 포함). 없으면 TARGET_NOT_FOUND.",
     params: { commandId: { type: "string", required: true }, scope: { type: "string" } },
     returns: "{ command }",
@@ -137,6 +140,7 @@ export function registerCommands(
   });
 
   reg("command.refs", {
+    message: (d) => `${(d.refs ?? []).length}개의 참조를 찾았습니다.`,
     description: "명령의 command 템플릿을 parse 해 Reference 메타를 반환(검증·표시용 — 실행 아님).",
     params: { commandId: { type: "string", required: true }, scope: { type: "string" } },
     returns: "{ refs }",
@@ -151,6 +155,7 @@ export function registerCommands(
   });
 
   reg("command.update", {
+    message: () => "명령을 갱신했습니다.",
     description:
       "명령 갱신(전체교체 — 누락 필드는 기존 보존). command 변경 시 Reference 메타 재추출.",
     params: {
@@ -191,6 +196,7 @@ export function registerCommands(
   });
 
   reg("command.delete", {
+    message: () => "명령을 휴지통으로 옮겼습니다.",
     description: "명령 휴지통으로(소프트 삭제 — boolean deleted). 복원 가능.",
     params: { commandId: { type: "string", required: true }, scope: { type: "string" } },
     returns: "{ commandId }",
@@ -211,6 +217,7 @@ export function registerCommands(
   });
 
   reg("command.restore", {
+    message: () => "명령을 복원했습니다.",
     description: "휴지통의 명령 복원(deleted=false).",
     params: { commandId: { type: "string", required: true }, scope: { type: "string" } },
     returns: "{ commandId }",
@@ -232,6 +239,7 @@ export function registerCommands(
   });
 
   reg("command.duplicate", {
+    message: () => "명령을 복제했습니다.",
     description: "명령 복제(새 id, label 에 ' (복사)' 접미, 비휴지통·order 맨 뒤).",
     params: { commandId: { type: "string", required: true }, scope: { type: "string" } },
     returns: "{ commandId }",
@@ -256,6 +264,7 @@ export function registerCommands(
   });
 
   reg("command.list", {
+    message: (d) => `${(d.commands ?? []).length}개의 명령을 찾았습니다.`,
     description:
       "명령 목록(order 순). trash=true 휴지통만, favorite=true 즐겨찾기만, groupId 지정 시 해당 그룹.",
     params: {
@@ -281,6 +290,7 @@ export function registerCommands(
   });
 
   reg("command.search", {
+    message: (d) => `${(d.commands ?? []).length}개를 찾았습니다.`,
     description: "명령 CJK 전문검색(label·command). 휴지통 제외.",
     params: {
       query: { type: "string", required: true },
@@ -299,6 +309,7 @@ export function registerCommands(
   });
 
   reg("command.set-group", {
+    message: () => "명령을 이동했습니다.",
     description: "명령을 다른 그룹으로 이동.",
     params: {
       commandId: { type: "string", required: true },
@@ -320,6 +331,7 @@ export function registerCommands(
   });
 
   reg("command.favorite", {
+    message: (d) => (d.favorite ? "즐겨찾기에 추가했습니다." : "즐겨찾기를 해제했습니다."),
     description: "즐겨찾기 토글(있으면 해제, 없으면 설정).",
     params: { commandId: { type: "string", required: true }, scope: { type: "string" } },
     returns: "{ commandId, favorite }",
@@ -339,6 +351,7 @@ export function registerCommands(
   // ── 실행(run) — 링킹 + 셸/터미널 ──
 
   reg("command.run", {
+    message: (d) => (d.scheduled ? "예약했습니다." : `종료 코드 ${d.exitCode ?? 0}으로 실행했습니다.`),
     description:
       "런북 명령 실행. command 참조는 위상순으로 먼저 실행→출력을 다음 입력으로 되먹임(링킹). 순환=CYCLE, 미해소 참조=UNRESOLVED. script/background=셸 실행(stdout/stderr·exitCode 캡처) — secret 참조는 자식 env 주입($SOKSAK_SECRET_N, 평문은 Rust 경계에서만·history/lastOutput 엔 플레이스홀더). terminal=코어 term.exec(포커스 pane) — secret 동반 시 SECRET_PENDING(ps 노출 위험으로 미지원). 결과는 lastOutput/lastStatusCode/lastExecutedAt 갱신 + 히스토리 자동 기록.",
     params: {
@@ -387,6 +400,7 @@ export function registerCommands(
 
   // ── schedule 발화(fire) — 코어 스케줄러가 due 시각에 호출. 사용자 직접 대상 아님(arm=command.run). ──
   reg("schedule.fire", {
+    message: (d) => `종료 코드 ${d.exitCode ?? 0}으로 실행했습니다.`,
     description:
       "코어 스케줄러가 due 시각에 호출 — schedule 명령의 action(command 필드, 셸)을 실행하고 다음 occurrence 를 재무장한다(반복/간격). deleted 면 발화·재무장 0. 사용자 직접 호출 대상 아님.",
     params: { commandId: { type: "string", required: true }, scope: { type: "string" } },
@@ -416,6 +430,7 @@ export function registerCommands(
   // ── 그룹(group) CRUD ──
 
   reg("group.add", {
+    message: () => "그룹을 추가했습니다.",
     description: "그룹 추가. name 필수, color(blue|red|green|orange|purple|gray) 생략 시 gray.",
     params: {
       name: { type: "string", required: true },
@@ -440,6 +455,7 @@ export function registerCommands(
   });
 
   reg("group.update", {
+    message: () => "그룹을 갱신했습니다.",
     description: "그룹 갱신(name·color).",
     params: {
       groupId: { type: "string", required: true },
@@ -463,6 +479,7 @@ export function registerCommands(
   });
 
   reg("group.delete", {
+    message: (d) => `그룹을 삭제하고 ${d.reassigned ?? 0}개 명령을 재배치했습니다.`,
     description:
       "그룹 삭제(하드). 소속 명령은 기본 그룹으로 재배치(고아 방지). 기본 그룹은 보장 후 재생성.",
     params: { groupId: { type: "string", required: true }, scope: { type: "string" } },
@@ -487,6 +504,7 @@ export function registerCommands(
   });
 
   reg("group.list", {
+    message: (d) => `${(d.groups ?? []).length}개의 그룹을 찾았습니다.`,
     description: "그룹 목록(order 순). 기본 그룹을 보장(없으면 생성).",
     params: { scope: { type: "string" } },
     returns: "{ groups }",
@@ -506,6 +524,7 @@ export function registerCommands(
   // ── 히스토리(history) ──
 
   reg("history.add", {
+    message: () => "히스토리를 기록했습니다.",
     description:
       "실행 히스토리 1건 기록(label·command·type 필수, output·statusCode·commandId 선택). 실행기가 후속에 호출하나, 헤드리스 검증용으로도 노출.",
     params: {
@@ -539,6 +558,7 @@ export function registerCommands(
   });
 
   reg("history.list", {
+    message: (d) => `${(d.history ?? []).length}개의 기록을 찾았습니다.`,
     description: "히스토리 목록(최신순). trash=true 휴지통만, type 지정 시 해당 실행타입만.",
     params: {
       trash: { type: "boolean" },
@@ -559,6 +579,7 @@ export function registerCommands(
   });
 
   reg("history.search", {
+    message: (d) => `${(d.history ?? []).length}개를 찾았습니다.`,
     description: "히스토리 CJK 전문검색(label·command·output). 휴지통 제외.",
     params: {
       query: { type: "string", required: true },
@@ -577,6 +598,7 @@ export function registerCommands(
   });
 
   reg("history.delete", {
+    message: () => "기록을 휴지통으로 옮겼습니다.",
     description: "히스토리 1건 휴지통으로(소프트 삭제).",
     params: { historyId: { type: "string", required: true }, scope: { type: "string" } },
     returns: "{ historyId }",
@@ -593,6 +615,7 @@ export function registerCommands(
   });
 
   reg("history.restore", {
+    message: () => "기록을 복원했습니다.",
     description: "휴지통의 히스토리 복원.",
     params: { historyId: { type: "string", required: true }, scope: { type: "string" } },
     returns: "{ historyId }",
@@ -609,6 +632,7 @@ export function registerCommands(
   });
 
   reg("history.clear", {
+    message: (d) => `${d.deleted ?? 0}개의 기록을 삭제했습니다.`,
     description: "히스토리 전체 삭제(하드). trashOnly=true 면 휴지통만.",
     params: { trashOnly: { type: "boolean" }, scope: { type: "string" } },
     returns: "{ deleted }",
@@ -624,6 +648,8 @@ export function registerCommands(
   // ── export / import (JSONL 왕복) ──
 
   reg("export", {
+    message: (d) =>
+      `그룹 ${d.counts?.groups ?? 0}·명령 ${d.counts?.commands ?? 0}·기록 ${d.counts?.history ?? 0}건을 내보냈습니다.`,
     description:
       "런북 전체(그룹·명령·히스토리) JSONL 내보내기. 각 줄 = { kind, doc }. 평문 시크릿은 저장하지 않으므로 export 에도 등장하지 않는다(R2).",
     params: { scope: { type: "string" } },
@@ -651,6 +677,7 @@ export function registerCommands(
   });
 
   reg("import", {
+    message: (d) => `${d.imported ?? 0}건을 가져왔습니다.`,
     description:
       "JSONL 가져오기(export 역). 각 줄 { kind, doc } 를 컬렉션에 put(id 보존 = 멱등 upsert).",
     params: { jsonl: { type: "string", required: true }, scope: { type: "string" } },
