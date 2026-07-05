@@ -6,7 +6,8 @@
     "build": "esbuild src/index.ts --bundle --format=esm --outfile=main.js",
     "test": "vitest run",
     "doctor": "soksak-plugin-doctor",
-    "prepublishOnly": "npm run build && npm run doctor"
+    "prepublishOnly": "npm run build && npm run doctor",
+    "test-unit": "vitest run"
   },
   "devDependencies": {
     "esbuild": "^0.24.0",
