@@ -28,6 +28,7 @@ interface CommandsApi {
       params?: Record<string, unknown>;
       returns?: string;
       examples?: string[];
+      message?: (d: any) => string;
       handler: (params: Record<string, unknown>) => unknown;
     },
   ) => Disposable;
@@ -180,6 +181,7 @@ export default {
     // ── Reference 엔진 검증 노출(엔진 자체 단언용 — parse/resolve 순수 코어). ──
     sub(
       cmds.register("ref.parse", {
+        message: (d) => `${(d.refs ?? []).length}개의 참조를 파싱했습니다.`,
         description: "Reference 템플릿을 파싱해 노드와 추출된 Reference 목록을 반환(엔진 검증).",
         params: { template: { type: "string", required: true } },
         returns: "{ nodes, refs }",
@@ -188,6 +190,7 @@ export default {
     );
     sub(
       cmds.register("ref.resolve", {
+        message: (d) => `${(d.errors ?? []).length}개의 오류로 해석했습니다.`,
         description:
           "Reference 템플릿을 주어진 context 로 해석해 텍스트·에러·시크릿 핸들을 반환(엔진 검증). 평문 시크릿 미수신 — secretNs 만.",
         params: { template: { type: "string", required: true }, context: { type: "object" } },
@@ -201,6 +204,7 @@ export default {
     // 토큰↔배지 직렬화는 src/ui/tokens(단일 파서 parse 재사용 R8). 시크릿 토큰은 key 만 — 평문 0(R2).
     sub(
       cmds.register("editor.tokens", {
+        message: (d) => `${(d.tokens ?? []).length}개의 토큰을 얻었습니다.`,
         description:
           "저장형 토큰 문자열을 배지 토큰 배열로 역직렬화(텍스트 제외). 인라인 배지 에디터의 토큰 모델 검증용. 시크릿 토큰은 provider·key 만 — 평문 미보유(R2).",
         params: { text: { type: "string", required: true, description: "저장형 토큰 문자열" } },
@@ -213,6 +217,7 @@ export default {
     );
     sub(
       cmds.register("editor.serialize", {
+        message: () => "직렬화했습니다.",
         description:
           "배지 토큰/텍스트 세그먼트 배열을 저장형 토큰 문자열로 직렬화(에디터 저장 경로의 순수 노출). raw 가 없는 토큰은 provider 규약으로 합성. text 만 넘기면 역직렬화→재직렬화 왕복(항등 확인).",
         params: {
