@@ -43,6 +43,11 @@ interface CommandsApi {
       returns?: string;
       examples?: string[];
       message?: (d: any) => string;
+      // 후속 명령 제안(코어 동형) — 실행 결과 data 를 받아 다음 수를 제안(지시 아님). execute 가 상한 3.
+      hint?: (
+        data: Record<string, unknown>,
+        ctx: Record<string, unknown>,
+      ) => Array<{ cmd: string; why: string }>;
       handler: (params: Record<string, unknown>) => unknown;
     },
   ) => { dispose: () => void };
@@ -123,6 +128,22 @@ export function registerCommands(
       if (refs.length > 0) rec.refs = refs;
       const commandId = await data.put(COMMANDS, rec, { scope });
       return ok({ commandId, refs });
+    },
+    hint: (d) => {
+      if (typeof d.commandId !== "string") return [];
+      const out = [
+        {
+          cmd: `sok plugin.soksak-plugin-runbook.command.run {"commandId":"${d.commandId}"}`,
+          why: "추가한 명령을 바로 실행해 볼 수 있습니다",
+        },
+      ];
+      if (Array.isArray(d.refs) && d.refs.length > 0) {
+        out.push({
+          cmd: `sok plugin.soksak-plugin-runbook.command.refs {"commandId":"${d.commandId}"}`,
+          why: "실행 전에 이 명령이 참조하는 대상을 확인할 수 있습니다",
+        });
+      }
+      return out;
     },
   });
 
@@ -361,7 +382,7 @@ export function registerCommands(
       scope: { type: "string" },
     },
     returns:
-      "{ ok, output, exitCode, historyId } | { ok:false, code:CYCLE|UNRESOLVED|SECRET_PENDING|TARGET_NOT_FOUND|NO_RUNTIME|EXEC_ERROR }",
+      "{ ok, output, exitCode, historyId, paneId? } | { ok:false, code:CYCLE|UNRESOLVED|SECRET_PENDING|TARGET_NOT_FOUND|NO_RUNTIME|EXEC_ERROR }. paneId 는 terminal 실행일 때만(term.exec 가 작용한 pane).",
     examples: [
       'sok plugin.soksak-plugin-runbook.command.run \'{"commandId":"abc"}\'',
       'sok plugin.soksak-plugin-runbook.command.run \'{"commandId":"abc","inputs":{"env":"prod"}}\'',
@@ -396,6 +417,17 @@ export function registerCommands(
       // RunResult 는 이미 {ok,...} 형태 — 그대로 반환(code 명시 전파 R4).
       return result;
     },
+    // terminal 실행은 출력이 즉시 캡처되지 않는다(pane 에 주입만) — paneId 가 있으면 그 pane 을
+    // 읽어 결과를 확인할 수 있음을 제시(term.exec→term.read 사이클과 동형).
+    hint: (d) =>
+      typeof d.paneId === "string"
+        ? [
+            {
+              cmd: `sok term.read {"pane":"${d.paneId}"}`,
+              why: "터미널에 주입된 실행 결과를 확인할 수 있습니다",
+            },
+          ]
+        : [],
   });
 
   // ── schedule 발화(fire) — 코어 스케줄러가 due 시각에 호출. 사용자 직접 대상 아님(arm=command.run). ──
