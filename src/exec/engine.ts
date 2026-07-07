@@ -100,7 +100,15 @@ export interface RunInput {
 }
 
 export type RunResult =
-  | { ok: true; output: string; exitCode: number; historyId?: string; statusCode?: number }
+  | {
+      ok: true;
+      output: string;
+      exitCode: number;
+      historyId?: string;
+      statusCode?: number;
+      /** terminal 실행이 실제 주입한 pane(term.exec 응답 그대로). script/background/api 는 없음. */
+      paneId?: string;
+    }
   | { ok: false; code: "TARGET_NOT_FOUND"; message: string }
   | { ok: false; code: "CYCLE"; cycle: string[] }
   | { ok: false; code: "UNRESOLVED"; unresolved: string[] }
@@ -148,9 +156,10 @@ function bodyContentType(bodyType: string | undefined): string | undefined {
   }
 }
 
-/** 한 노드 실행 결과. stdout=링킹 되먹임 값(jsonPath 추출 대상), output=표시·history 값. statusCode=api HTTP. */
+/** 한 노드 실행 결과. stdout=링킹 되먹임 값(jsonPath 추출 대상), output=표시·history 값. statusCode=api HTTP.
+ *  paneId=terminal 이 실제 주입한 pane(term.exec 응답 그대로 — 어느 pane 에 작용했는지 자기서술). */
 type NodeResult =
-  | { ok: true; stdout: string; output: string; exitCode: number; statusCode?: number }
+  | { ok: true; stdout: string; output: string; exitCode: number; statusCode?: number; paneId?: string }
   | { ok: false; code: "UNRESOLVED"; unresolved: string[] }
   | { ok: false; code: "NO_RUNTIME" | "EXEC_ERROR"; message: string };
 
@@ -242,7 +251,10 @@ async function executeNode(
     if (!r.ok) {
       return { ok: false, code: "EXEC_ERROR", message: r.message ?? `term.exec 실패: ${r.code ?? ""}` };
     }
-    return { ok: true, stdout: "", output: `터미널 실행: ${sub.text}`, exitCode: 0 };
+    // term.exec 는 "포커스된(활성) pane" 을 암묵 대상으로 삼는다 — 어느 pane 에 작용했는지는
+    // 그 응답의 paneId 로만 안다. 그대로 실어 되돌려준다(자기서술 — 후속 term.read 대상 확정).
+    const paneId = typeof r.paneId === "string" ? r.paneId : undefined;
+    return { ok: true, stdout: "", output: `터미널 실행: ${sub.text}`, exitCode: 0, paneId };
   }
 
   return {
@@ -385,6 +397,7 @@ export async function runCommand(
     exitCode: rootResult.exitCode,
     historyId,
     ...(rootResult.statusCode !== undefined ? { statusCode: rootResult.statusCode } : {}),
+    ...(rootResult.paneId !== undefined ? { paneId: rootResult.paneId } : {}),
   };
 }
 

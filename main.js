@@ -651,7 +651,8 @@ async function executeNode(deps, rec, ctx, isRoot) {
     if (!r.ok) {
       return { ok: false, code: "EXEC_ERROR", message: r.message ?? `term.exec \uC2E4\uD328: ${r.code ?? ""}` };
     }
-    return { ok: true, stdout: "", output: `\uD130\uBBF8\uB110 \uC2E4\uD589: ${sub.text}`, exitCode: 0 };
+    const paneId = typeof r.paneId === "string" ? r.paneId : void 0;
+    return { ok: true, stdout: "", output: `\uD130\uBBF8\uB110 \uC2E4\uD589: ${sub.text}`, exitCode: 0, paneId };
   }
   return {
     ok: false,
@@ -756,7 +757,8 @@ async function runCommand(deps, input) {
     output: rootResult.output,
     exitCode: rootResult.exitCode,
     historyId,
-    ...rootResult.statusCode !== void 0 ? { statusCode: rootResult.statusCode } : {}
+    ...rootResult.statusCode !== void 0 ? { statusCode: rootResult.statusCode } : {},
+    ...rootResult.paneId !== void 0 ? { paneId: rootResult.paneId } : {}
   };
 }
 function coerceOutput(out) {
@@ -915,6 +917,22 @@ function registerCommands(data, cmds, sub, runtime = {}) {
       if (refs.length > 0) rec.refs = refs;
       const commandId = await data.put(COMMANDS, rec, { scope });
       return ok({ commandId, refs });
+    },
+    hint: (d) => {
+      if (typeof d.commandId !== "string") return [];
+      const out = [
+        {
+          cmd: `sok plugin.soksak-plugin-runbook.command.run {"commandId":"${d.commandId}"}`,
+          why: "\uCD94\uAC00\uD55C \uBA85\uB839\uC744 \uBC14\uB85C \uC2E4\uD589\uD574 \uBCFC \uC218 \uC788\uC2B5\uB2C8\uB2E4"
+        }
+      ];
+      if (Array.isArray(d.refs) && d.refs.length > 0) {
+        out.push({
+          cmd: `sok plugin.soksak-plugin-runbook.command.refs {"commandId":"${d.commandId}"}`,
+          why: "\uC2E4\uD589 \uC804\uC5D0 \uC774 \uBA85\uB839\uC774 \uCC38\uC870\uD558\uB294 \uB300\uC0C1\uC744 \uD655\uC778\uD560 \uC218 \uC788\uC2B5\uB2C8\uB2E4"
+        });
+      }
+      return out;
     }
   });
   reg("command.get", {
@@ -1132,7 +1150,7 @@ function registerCommands(data, cmds, sub, runtime = {}) {
       env: { type: "object", description: "\uD658\uACBD\uBCC0\uC218 \uCE58\uD658 \uB9F5({{var}}\u2192\uAC12)" },
       scope: { type: "string" }
     },
-    returns: "{ ok, output, exitCode, historyId } | { ok:false, code:CYCLE|UNRESOLVED|SECRET_PENDING|TARGET_NOT_FOUND|NO_RUNTIME|EXEC_ERROR }",
+    returns: "{ ok, output, exitCode, historyId, paneId? } | { ok:false, code:CYCLE|UNRESOLVED|SECRET_PENDING|TARGET_NOT_FOUND|NO_RUNTIME|EXEC_ERROR }. paneId \uB294 terminal \uC2E4\uD589\uC77C \uB54C\uB9CC(term.exec \uAC00 \uC791\uC6A9\uD55C pane).",
     examples: [
       `sok plugin.soksak-plugin-runbook.command.run '{"commandId":"abc"}'`,
       `sok plugin.soksak-plugin-runbook.command.run '{"commandId":"abc","inputs":{"env":"prod"}}'`
@@ -1158,7 +1176,15 @@ function registerCommands(data, cmds, sub, runtime = {}) {
         { commandId: p.commandId, scope, inputs, env, secretNs: runtime.secretNs }
       );
       return result;
-    }
+    },
+    // terminal 실행은 출력이 즉시 캡처되지 않는다(pane 에 주입만) — paneId 가 있으면 그 pane 을
+    // 읽어 결과를 확인할 수 있음을 제시(term.exec→term.read 사이클과 동형).
+    hint: (d) => typeof d.paneId === "string" ? [
+      {
+        cmd: `sok term.read {"pane":"${d.paneId}"}`,
+        why: "\uD130\uBBF8\uB110\uC5D0 \uC8FC\uC785\uB41C \uC2E4\uD589 \uACB0\uACFC\uB97C \uD655\uC778\uD560 \uC218 \uC788\uC2B5\uB2C8\uB2E4"
+      }
+    ] : []
   });
   reg("schedule.fire", {
     message: (d) => `\uC885\uB8CC \uCF54\uB4DC ${d.exitCode ?? 0}\uC73C\uB85C \uC2E4\uD589\uD588\uC2B5\uB2C8\uB2E4.`,

@@ -29,6 +29,11 @@ interface CommandsApi {
       returns?: string;
       examples?: string[];
       message?: (d: any) => string;
+      // 후속 명령 제안(코어 동형) — 실행 결과 data 를 받아 다음 수를 제안(지시 아님). execute 가 상한 3.
+      hint?: (
+        data: Record<string, unknown>,
+        ctx: Record<string, unknown>,
+      ) => Array<{ cmd: string; why: string }>;
       handler: (params: Record<string, unknown>) => unknown;
     },
   ) => Disposable;
