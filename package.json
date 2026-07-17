@@ -14,5 +14,12 @@
     "typescript": "^5.6.0",
     "vitest": "^2.1.0",
     "soksak-plugin-doctor": "github:soksak-ai/soksak-plugin-doctor"
+  },
+  "version": "0.0.1",
+  "soksakRelease": {
+    "kind": "plugin",
+    "id": "soksak-plugin-runbook",
+    "repository": "https://github.com/soksak-ai/soksak-plugin-runbook",
+    "manifest": "release.json"
   }
 }
