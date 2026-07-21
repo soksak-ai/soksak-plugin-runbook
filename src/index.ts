@@ -15,8 +15,9 @@ import { COMMANDS, GROUPS, HISTORY, type CommandRecord } from "./data/model";
 import { armSchedule } from "./exec/index";
 import { parse, resolve, type ResolveContext } from "./refs/index";
 import { deserialize, serialize, tokensOf } from "./ui/tokens";
+import { createRailView } from "./ui/railBridge";
 import { createRunbookView, type RunbookApi } from "./ui/view";
-import { setLang } from "./ui/i18n";
+import { setLang, t } from "./ui/i18n";
 
 type Disposable = { dispose: () => void };
 
@@ -139,6 +140,10 @@ export default {
         pluginId: app.pluginId,
       };
       sub(app.ui.registerView("runbook", createRunbookView(viewApp, mounts) as unknown as ViewProvider));
+      // 방출된 사이드바(rail) — 컨테이너만 소유하고 내용은 결부 런북 뷰가 브리지로 옮겨 넣는다
+      // (상태 단일 소유·이중 진실 0). 미결부면 정적 안내.
+      sub(app.ui.registerView("list", createRailView("list", () => t("railNoBinding")) as unknown as ViewProvider));
+      sub(app.ui.registerView("editor", createRailView("editor", () => t("railNoBinding")) as unknown as ViewProvider));
     }
 
     // 전 창 동기화(데이터 변경 → watch). 뷰가 마운트돼 있으면 그 인스턴스들을 재질의(전 창 일관, 폴링 0).

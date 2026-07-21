@@ -22,10 +22,12 @@ import {
   type BadgeToken,
   type Segment,
 } from "./tokens";
+import { railContainer, subscribeRail } from "./railBridge";
 import { t as tr } from "./i18n";
 
 const COMMANDS = "commands";
 const GROUPS = "groups";
+const HISTORY = "history";
 
 // 색 토큰만 — 배지 type 색은 var(--acc)·var(--fg) 에서 color-mix 파생(하드코딩 색 0, 테마 적응).
 const CSS = [
@@ -95,6 +97,14 @@ const CSS = [
   ".rb-sg-item{padding:4px 8px;font-size:11.5px;color:var(--fg2);cursor:pointer;display:flex;justify-content:space-between;gap:8px;}",
   ".rb-sg-item:hover,.rb-sg-item.active{background:color-mix(in srgb,var(--acc) 16%,var(--bg));color:var(--fg);}",
   ".rb-sg-kind{color:var(--fg3);font-size:10px;}",
+  // ── 실행 이력(중앙 — 목록이 레일로 방출됐을 때만 표시) ──
+  ".rb-hist{display:flex;flex-direction:column;flex:1;min-height:0;overflow-y:auto;padding:6px 8px;}",
+  ".rb-hist-title{font-size:11px;font-weight:600;letter-spacing:.02em;color:var(--fg2);padding:5px 6px 7px;}",
+  ".rb-hist-empty{padding:24px 12px;text-align:center;font-size:11px;color:var(--fg3);}",
+  ".rb-hrow{display:flex;gap:8px;align-items:center;padding:6px 8px;border-radius:8px;}",
+  ".rb-hrow:hover{background:color-mix(in srgb,var(--fg) 5%,var(--bg));}",
+  ".rb-hlabel{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}",
+  ".rb-hmeta{flex:none;display:flex;gap:6px;align-items:center;font-size:10.5px;color:var(--fg3);}",
 ].join("");
 
 // node path 안정키 정제(세그먼트 형식 ^[a-z0-9][a-z0-9.-]*$) — 동적 목록 키.
@@ -156,10 +166,13 @@ interface MountEntry {
 /** 뷰 등록. registerView 콜백에 그대로 넘긴다. mounts 는 watch 라우팅용 공유 Set. */
 export function createRunbookView(app: RunbookApi, mounts: Set<MountEntry>) {
   return {
-    mount(container: HTMLElement) {
+    mount(container: HTMLElement, vctx?: unknown) {
       // 명령 호출은 정규화된 이름(api.execute 는 prefix 안 함) — plugin.<id>.<name>.
       const cmd = (name: string, params?: Record<string, unknown>) =>
         app.commands.execute(`plugin.${app.pluginId}.${name}`, params);
+      // 콘텐츠 배치 뷰 id — 레일 브리지 키(사이드바 배치·구코어는 null → 브리지 침묵, 인라인 유지).
+      const rawViewId = (vctx as { viewId?: unknown } | undefined)?.viewId;
+      const viewKey = typeof rawViewId === "string" && rawViewId ? rawViewId : null;
       container.textContent = "";
       const style = document.createElement("style");
       style.textContent = CSS;
@@ -192,7 +205,15 @@ export function createRunbookView(app: RunbookApi, mounts: Set<MountEntry>) {
       const formHost = document.createElement("div"); // 폼이 들어올 자리(추가/편집 시)
       const listEl = document.createElement("div");
       listEl.className = "rb-list";
-      root.append(head, formHost, listEl);
+      // 레일 방출 복귀 앵커 — 방출이 풀릴 때 각 요소가 정확히 원위치로 돌아온다(폴백=기존 배치).
+      const headAnchor = document.createComment("rb-head");
+      const formAnchor = document.createComment("rb-form");
+      const listAnchor = document.createComment("rb-list");
+      // 실행 이력(중앙) — 목록·폼이 레일로 나가 있는 동안만 보인다. 인라인 폴백에선 숨김(기존 모습).
+      const historyPane = document.createElement("div");
+      historyPane.className = "rb-hist";
+      historyPane.style.display = "none";
+      root.append(headAnchor, head, formAnchor, formHost, listAnchor, listEl, historyPane);
       container.append(style, root);
 
       // ── 상태 ──
@@ -823,6 +844,65 @@ export function createRunbookView(app: RunbookApi, mounts: Set<MountEntry>) {
         groupSel.value = groupFilter;
       }
 
+      // ── 실행 이력(중앙) 렌더 — 목록 방출 중에만 질의·표시(§6: 중앙=실행/이력). ──
+      function renderHistory(rows: Record<string, unknown>[]) {
+        historyPane.textContent = "";
+        const title = document.createElement("div");
+        title.className = "rb-hist-title";
+        title.textContent = tr("historyTitle");
+        historyPane.append(title);
+        if (!rows.length) {
+          const empty = document.createElement("div");
+          empty.className = "rb-hist-empty";
+          empty.textContent = tr("historyEmpty");
+          historyPane.append(empty);
+          return;
+        }
+        for (const hRec of rows) {
+          const row = document.createElement("div");
+          row.className = "rb-hrow";
+          row.dataset.node = "history-row/" + nodeKey(hRec.id);
+          row.title = String(hRec.command ?? "");
+          const label = document.createElement("div");
+          label.className = "rb-hlabel";
+          label.textContent = String(hRec.label ?? ""); // 외부 데이터 textContent(XSS 안전)
+          const meta = document.createElement("div");
+          meta.className = "rb-hmeta";
+          const type = document.createElement("span");
+          type.className = "rb-exec rb-exec-" + String(hRec.type ?? "");
+          type.textContent = String(hRec.type ?? "");
+          meta.append(type);
+          if (typeof hRec.statusCode === "number") {
+            const sc = document.createElement("span");
+            sc.textContent = String(hRec.statusCode);
+            meta.append(sc);
+          }
+          const at = Number(hRec.at ?? 0);
+          if (at) {
+            const when = document.createElement("span");
+            when.textContent = new Date(at).toLocaleString();
+            meta.append(when);
+          }
+          row.append(label, meta);
+          historyPane.append(row);
+        }
+      }
+
+      async function refreshHistory() {
+        if (historyPane.style.display === "none") return; // 숨김(인라인 폴백) 동안은 질의도 안 한다
+        try {
+          const rows = await app.data.query(HISTORY, {
+            where: { deleted: false },
+            order: "at",
+            desc: true,
+            limit: 100,
+          });
+          renderHistory(rows);
+        } catch (e) {
+          console.warn("[runbook] history refresh 실패:", e);
+        }
+      }
+
       // ── 갱신(질의 → 렌더) ── 읽기는 app.data 직접(클립보드 idiom) — execute 는 이름 prefix 를
       // 안 하므로 정규화 비용 회피. 쓰기(저장/삭제/실행/즐겨찾기)만 정규화된 명령(refs 추출 경유).
       async function refresh() {
@@ -847,6 +927,7 @@ export function createRunbookView(app: RunbookApi, mounts: Set<MountEntry>) {
             });
           }
           renderRows(commands);
+          void refreshHistory();
         } catch (e) {
           console.warn("[runbook] refresh 실패:", e);
         }
@@ -864,19 +945,57 @@ export function createRunbookView(app: RunbookApi, mounts: Set<MountEntry>) {
       });
       addBtn.addEventListener("click", () => openForm());
 
+      // ── 사이드바 방출(rail) — list 레일이 등록되면 헤더+목록을, editor 레일이 등록되면 폼
+      // 호스트를 그 컨테이너로 옮긴다. 목록이 나가 있는 동안 중앙은 실행 이력을 보인다. 해제되면
+      // 앵커 위치로 복귀(폴백=기존 배치 그대로). 요소는 하나뿐 — 상태·data-node 주소가 갈리지 않는다.
+      let listRailHost: HTMLElement | null = null;
+      let editorRailHost: HTMLElement | null = null;
+      const applyRails = () => {
+        const listTarget = railContainer(viewKey, "list");
+        if (listTarget !== listRailHost) {
+          listRailHost = listTarget;
+          if (listTarget) {
+            listTarget.append(head, listEl);
+          } else {
+            headAnchor.after(head);
+            listAnchor.after(listEl);
+          }
+          historyPane.style.display = listTarget ? "" : "none";
+          if (listTarget) void refreshHistory();
+        }
+        const editorTarget = railContainer(viewKey, "editor");
+        if (editorTarget !== editorRailHost) {
+          editorRailHost = editorTarget;
+          if (editorTarget) editorTarget.append(formHost);
+          else formAnchor.after(formHost);
+        }
+      };
+      const unRail = subscribeRail(viewKey, applyRails);
+      applyRails();
+
       const entry: MountEntry = { refresh: () => void refresh() };
       mounts.add(entry);
-      (container as unknown as { __rbEntry?: MountEntry }).__rbEntry = entry;
+      const stash = container as unknown as { __rbEntry?: MountEntry; __rbRail?: () => void };
+      stash.__rbEntry = entry;
+      stash.__rbRail = () => {
+        unRail();
+        // 방출돼 있던 요소를 레일에서 회수 — 이 마운트가 더는 섬기지 않는 컨테이너에 잔재를 안 남긴다.
+        head.remove();
+        listEl.remove();
+        formHost.remove();
+      };
       void refreshCandidates();
       void refresh();
     },
 
     unmount(container: HTMLElement) {
-      const c = container as unknown as { __rbEntry?: MountEntry };
+      const c = container as unknown as { __rbEntry?: MountEntry; __rbRail?: () => void };
       if (c.__rbEntry) {
         mounts.delete(c.__rbEntry);
         c.__rbEntry = undefined;
       }
+      c.__rbRail?.();
+      c.__rbRail = undefined;
       container.textContent = "";
     },
   };

@@ -33,7 +33,46 @@
         },
         "icon": "\ud83d\udcd3",
         "placements": [
+          "content",
           "sidebar-right"
+        ],
+        "defaultPlacement": "content",
+        "status": [],
+        "sidebar": {
+          "left": [
+            {
+              "ref": "self.list",
+              "instance": "per-view"
+            }
+          ],
+          "right": [
+            {
+              "ref": "self.editor",
+              "instance": "per-view"
+            }
+          ]
+        }
+      },
+      {
+        "id": "list",
+        "title": {
+          "ko": "\uba85\ub839 \ubaa9\ub85d",
+          "en": "Commands"
+        },
+        "icon": "\u2630",
+        "placements": [
+          "rail"
+        ]
+      },
+      {
+        "id": "editor",
+        "title": {
+          "ko": "\uba85\ub839 \ud3b8\uc9d1",
+          "en": "Editor"
+        },
+        "icon": "\u270e",
+        "placements": [
+          "rail"
         ]
       }
     ],
@@ -105,6 +144,10 @@
       {
         "id": "suggestion-item",
         "description": "\uc790\ub3d9\uc644\uc131 \ud6c4\ubcf4 \ud56d\ubaa9"
+      },
+      {
+        "id": "history-row",
+        "description": "\uc2e4\ud589 \uc774\ub825 \ud589(\uc911\uc559 \u2014 \ubaa9\ub85d\uc774 \ub808\uc77c\ub85c \ubc29\ucd9c\ub41c \ub3d9\uc548). data-node=\"history-row/<\ud0a4>\""
       }
     ],
     "commands": [

@@ -1568,6 +1568,78 @@ function filterCandidates(candidates, query) {
   });
 }
 
+// src/ui/railBridge.ts
+var containers = /* @__PURE__ */ new Map();
+var subs = /* @__PURE__ */ new Map();
+function notify(viewId) {
+  for (const fn of subs.get(viewId) ?? []) fn();
+}
+function registerRailContainer(viewId, slot, el) {
+  const entry = containers.get(viewId) ?? {};
+  entry[slot] = el;
+  containers.set(viewId, entry);
+  notify(viewId);
+  return () => {
+    const cur = containers.get(viewId);
+    if (!cur || cur[slot] !== el) return;
+    delete cur[slot];
+    if (!cur.list && !cur.editor) containers.delete(viewId);
+    notify(viewId);
+  };
+}
+function railContainer(viewId, slot) {
+  if (!viewId) return null;
+  return containers.get(viewId)?.[slot] ?? null;
+}
+function subscribeRail(viewId, fn) {
+  if (!viewId) return () => {
+  };
+  let set = subs.get(viewId);
+  if (!set) {
+    set = /* @__PURE__ */ new Set();
+    subs.set(viewId, set);
+  }
+  set.add(fn);
+  return () => {
+    const s = subs.get(viewId);
+    if (!s) return;
+    s.delete(fn);
+    if (s.size === 0) subs.delete(viewId);
+  };
+}
+function createRailView(slot, hint) {
+  const cleanups = /* @__PURE__ */ new WeakMap();
+  return {
+    mount(container, vctx) {
+      cleanups.get(container)?.();
+      container.textContent = "";
+      const host = document.createElement("div");
+      host.style.cssText = "display:flex;flex-direction:column;height:100%;min-height:0;overflow:hidden";
+      container.append(host);
+      const bound = vctx?.boundViewId;
+      if (typeof bound !== "string" || !bound) {
+        const note = document.createElement("div");
+        note.style.cssText = "padding:10px 12px;font-size:11px;color:var(--fg3)";
+        note.textContent = hint();
+        host.append(note);
+        cleanups.set(container, () => {
+          container.textContent = "";
+        });
+        return;
+      }
+      const off = registerRailContainer(bound, slot, host);
+      cleanups.set(container, () => {
+        off();
+        container.textContent = "";
+      });
+    },
+    unmount(container) {
+      cleanups.get(container)?.();
+      cleanups.delete(container);
+    }
+  };
+}
+
 // src/ui/i18n.ts
 var strings = {
   searchPlaceholder: { en: "Search commands\u2026", ko: "\uBA85\uB839 \uAC80\uC0C9\u2026" },
@@ -1586,7 +1658,10 @@ var strings = {
   favoriteButtonTitle: { en: "Favorite", ko: "\uC990\uACA8\uCC3E\uAE30" },
   editButtonTitle: { en: "Edit", ko: "\uD3B8\uC9D1" },
   deleteButtonTitle: { en: "Delete", ko: "\uC0AD\uC81C" },
-  allGroups: { en: "All groups", ko: "\uC804\uCCB4 \uADF8\uB8F9" }
+  allGroups: { en: "All groups", ko: "\uC804\uCCB4 \uADF8\uB8F9" },
+  historyTitle: { en: "Run history", ko: "\uC2E4\uD589 \uC774\uB825" },
+  historyEmpty: { en: "No runs yet", ko: "\uC544\uC9C1 \uC2E4\uD589 \uAE30\uB85D\uC774 \uC5C6\uC2B5\uB2C8\uB2E4" },
+  railNoBinding: { en: "No runbook view bound", ko: "\uACB0\uBD80\uB41C \uB7F0\uBD81 \uBDF0 \uC5C6\uC74C" }
 };
 var _lang = "ko";
 function setLang(lang) {
@@ -1600,6 +1675,7 @@ function t(key) {
 // src/ui/view.ts
 var COMMANDS2 = "commands";
 var GROUPS2 = "groups";
+var HISTORY2 = "history";
 var CSS = [
   ".rb-root{display:flex;flex-direction:column;height:100%;font-size:12px;color:var(--fg);}",
   ".rb-head{display:flex;flex-direction:column;gap:8px;padding:10px 10px 9px;border-bottom:1px solid var(--bd-soft);}",
@@ -1666,7 +1742,15 @@ var CSS = [
   ".rb-suggest{position:absolute;left:8px;right:8px;z-index:20;margin-top:2px;max-height:160px;overflow-y:auto;background:var(--bg);border:1px solid var(--bd);border-radius:6px;box-shadow:0 4px 14px color-mix(in srgb,var(--fg) 18%,transparent);}",
   ".rb-sg-item{padding:4px 8px;font-size:11.5px;color:var(--fg2);cursor:pointer;display:flex;justify-content:space-between;gap:8px;}",
   ".rb-sg-item:hover,.rb-sg-item.active{background:color-mix(in srgb,var(--acc) 16%,var(--bg));color:var(--fg);}",
-  ".rb-sg-kind{color:var(--fg3);font-size:10px;}"
+  ".rb-sg-kind{color:var(--fg3);font-size:10px;}",
+  // ── 실행 이력(중앙 — 목록이 레일로 방출됐을 때만 표시) ──
+  ".rb-hist{display:flex;flex-direction:column;flex:1;min-height:0;overflow-y:auto;padding:6px 8px;}",
+  ".rb-hist-title{font-size:11px;font-weight:600;letter-spacing:.02em;color:var(--fg2);padding:5px 6px 7px;}",
+  ".rb-hist-empty{padding:24px 12px;text-align:center;font-size:11px;color:var(--fg3);}",
+  ".rb-hrow{display:flex;gap:8px;align-items:center;padding:6px 8px;border-radius:8px;}",
+  ".rb-hrow:hover{background:color-mix(in srgb,var(--fg) 5%,var(--bg));}",
+  ".rb-hlabel{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}",
+  ".rb-hmeta{flex:none;display:flex;gap:6px;align-items:center;font-size:10.5px;color:var(--fg3);}"
 ].join("");
 function nodeKey(id) {
   const s = String(id).toLowerCase().replace(/[^a-z0-9.-]/g, "-");
@@ -1689,8 +1773,10 @@ function zwNode() {
 }
 function createRunbookView(app, mounts) {
   return {
-    mount(container) {
+    mount(container, vctx) {
       const cmd = (name, params) => app.commands.execute(`plugin.${app.pluginId}.${name}`, params);
+      const rawViewId = vctx?.viewId;
+      const viewKey = typeof rawViewId === "string" && rawViewId ? rawViewId : null;
       container.textContent = "";
       const style = document.createElement("style");
       style.textContent = CSS;
@@ -1719,7 +1805,13 @@ function createRunbookView(app, mounts) {
       const formHost = document.createElement("div");
       const listEl = document.createElement("div");
       listEl.className = "rb-list";
-      root.append(head, formHost, listEl);
+      const headAnchor = document.createComment("rb-head");
+      const formAnchor = document.createComment("rb-form");
+      const listAnchor = document.createComment("rb-list");
+      const historyPane = document.createElement("div");
+      historyPane.className = "rb-hist";
+      historyPane.style.display = "none";
+      root.append(headAnchor, head, formAnchor, formHost, listAnchor, listEl, historyPane);
       container.append(style, root);
       let searchTerm = "";
       let groupFilter = "";
@@ -2266,6 +2358,62 @@ function createRunbookView(app, mounts) {
         }
         groupSel.value = groupFilter;
       }
+      function renderHistory(rows) {
+        historyPane.textContent = "";
+        const title = document.createElement("div");
+        title.className = "rb-hist-title";
+        title.textContent = t("historyTitle");
+        historyPane.append(title);
+        if (!rows.length) {
+          const empty = document.createElement("div");
+          empty.className = "rb-hist-empty";
+          empty.textContent = t("historyEmpty");
+          historyPane.append(empty);
+          return;
+        }
+        for (const hRec of rows) {
+          const row = document.createElement("div");
+          row.className = "rb-hrow";
+          row.dataset.node = "history-row/" + nodeKey(hRec.id);
+          row.title = String(hRec.command ?? "");
+          const label = document.createElement("div");
+          label.className = "rb-hlabel";
+          label.textContent = String(hRec.label ?? "");
+          const meta = document.createElement("div");
+          meta.className = "rb-hmeta";
+          const type = document.createElement("span");
+          type.className = "rb-exec rb-exec-" + String(hRec.type ?? "");
+          type.textContent = String(hRec.type ?? "");
+          meta.append(type);
+          if (typeof hRec.statusCode === "number") {
+            const sc = document.createElement("span");
+            sc.textContent = String(hRec.statusCode);
+            meta.append(sc);
+          }
+          const at = Number(hRec.at ?? 0);
+          if (at) {
+            const when = document.createElement("span");
+            when.textContent = new Date(at).toLocaleString();
+            meta.append(when);
+          }
+          row.append(label, meta);
+          historyPane.append(row);
+        }
+      }
+      async function refreshHistory() {
+        if (historyPane.style.display === "none") return;
+        try {
+          const rows = await app.data.query(HISTORY2, {
+            where: { deleted: false },
+            order: "at",
+            desc: true,
+            limit: 100
+          });
+          renderHistory(rows);
+        } catch (e) {
+          console.warn("[runbook] history refresh \uC2E4\uD328:", e);
+        }
+      }
       async function refresh() {
         try {
           groups = await app.data.query(GROUPS2, { order: "order", desc: false, limit: 1e3 });
@@ -2287,6 +2435,7 @@ function createRunbookView(app, mounts) {
             });
           }
           renderRows(commands);
+          void refreshHistory();
         } catch (e) {
           console.warn("[runbook] refresh \uC2E4\uD328:", e);
         }
@@ -2301,9 +2450,40 @@ function createRunbookView(app, mounts) {
         void refresh();
       });
       addBtn.addEventListener("click", () => openForm());
+      let listRailHost = null;
+      let editorRailHost = null;
+      const applyRails = () => {
+        const listTarget = railContainer(viewKey, "list");
+        if (listTarget !== listRailHost) {
+          listRailHost = listTarget;
+          if (listTarget) {
+            listTarget.append(head, listEl);
+          } else {
+            headAnchor.after(head);
+            listAnchor.after(listEl);
+          }
+          historyPane.style.display = listTarget ? "" : "none";
+          if (listTarget) void refreshHistory();
+        }
+        const editorTarget = railContainer(viewKey, "editor");
+        if (editorTarget !== editorRailHost) {
+          editorRailHost = editorTarget;
+          if (editorTarget) editorTarget.append(formHost);
+          else formAnchor.after(formHost);
+        }
+      };
+      const unRail = subscribeRail(viewKey, applyRails);
+      applyRails();
       const entry = { refresh: () => void refresh() };
       mounts.add(entry);
-      container.__rbEntry = entry;
+      const stash = container;
+      stash.__rbEntry = entry;
+      stash.__rbRail = () => {
+        unRail();
+        head.remove();
+        listEl.remove();
+        formHost.remove();
+      };
       void refreshCandidates();
       void refresh();
     },
@@ -2313,6 +2493,8 @@ function createRunbookView(app, mounts) {
         mounts.delete(c.__rbEntry);
         c.__rbEntry = void 0;
       }
+      c.__rbRail?.();
+      c.__rbRail = void 0;
       container.textContent = "";
     }
   };
@@ -2350,6 +2532,8 @@ var index_default = {
         pluginId: app.pluginId
       };
       sub(app.ui.registerView("runbook", createRunbookView(viewApp, mounts)));
+      sub(app.ui.registerView("list", createRailView("list", () => t("railNoBinding"))));
+      sub(app.ui.registerView("editor", createRailView("editor", () => t("railNoBinding"))));
     }
     for (const coll of [COMMANDS, GROUPS, HISTORY]) {
       sub(

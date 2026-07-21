@@ -19,6 +19,9 @@ const strings = {
   editButtonTitle:     { en: "Edit",                                ko: "편집" },
   deleteButtonTitle:   { en: "Delete",                              ko: "삭제" },
   allGroups:           { en: "All groups",                          ko: "전체 그룹" },
+  historyTitle:        { en: "Run history",                         ko: "실행 이력" },
+  historyEmpty:        { en: "No runs yet",                         ko: "아직 실행 기록이 없습니다" },
+  railNoBinding:       { en: "No runbook view bound",               ko: "결부된 런북 뷰 없음" },
 } as const;
 
 type StringKey = keyof typeof strings;
