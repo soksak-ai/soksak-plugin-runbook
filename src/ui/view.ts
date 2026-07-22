@@ -946,8 +946,8 @@ export function createRunbookView(app: RunbookApi, mounts: Set<MountEntry>) {
       addBtn.addEventListener("click", () => openForm());
 
       // ── 사이드바 방출(rail) — list 레일이 등록되면 헤더+목록을, editor 레일이 등록되면 폼
-      // 호스트를 그 컨테이너로 옮긴다. 목록이 나가 있는 동안 중앙은 실행 이력을 보인다. 해제되면
-      // 앵커 위치로 복귀(폴백=기존 배치 그대로). 요소는 하나뿐 — 상태·data-node 주소가 갈리지 않는다.
+      // 호스트를 그 컨테이너에 그린다. 레일 부재(비결부) 시에는 그리지 않는다 — 내부 폴백 없음
+      // (투영 공리). 중앙은 항상 실행 이력이다. 요소는 하나뿐 — 상태·data-node 주소가 갈리지 않는다.
       let listRailHost: HTMLElement | null = null;
       let editorRailHost: HTMLElement | null = null;
       const applyRails = () => {
@@ -956,18 +956,18 @@ export function createRunbookView(app: RunbookApi, mounts: Set<MountEntry>) {
           listRailHost = listTarget;
           if (listTarget) {
             listTarget.append(head, listEl);
+            void refreshHistory();
           } else {
-            headAnchor.after(head);
-            listAnchor.after(listEl);
+            head.remove();
+            listEl.remove();
           }
-          historyPane.style.display = listTarget ? "" : "none";
-          if (listTarget) void refreshHistory();
+          historyPane.style.display = "";
         }
         const editorTarget = railContainer(viewKey, "editor");
         if (editorTarget !== editorRailHost) {
           editorRailHost = editorTarget;
           if (editorTarget) editorTarget.append(formHost);
-          else formAnchor.after(formHost);
+          else formHost.remove();
         }
       };
       const unRail = subscribeRail(viewKey, applyRails);

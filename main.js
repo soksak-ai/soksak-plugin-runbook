@@ -2458,18 +2458,18 @@ function createRunbookView(app, mounts) {
           listRailHost = listTarget;
           if (listTarget) {
             listTarget.append(head, listEl);
+            void refreshHistory();
           } else {
-            headAnchor.after(head);
-            listAnchor.after(listEl);
+            head.remove();
+            listEl.remove();
           }
-          historyPane.style.display = listTarget ? "" : "none";
-          if (listTarget) void refreshHistory();
+          historyPane.style.display = "";
         }
         const editorTarget = railContainer(viewKey, "editor");
         if (editorTarget !== editorRailHost) {
           editorRailHost = editorTarget;
           if (editorTarget) editorTarget.append(formHost);
-          else formAnchor.after(formHost);
+          else formHost.remove();
         }
       };
       const unRail = subscribeRail(viewKey, applyRails);
