@@ -2,12 +2,12 @@
   "spec": "soksak-spec-plugin@0.0.1",
   "id": "soksak-plugin-runbook",
   "name": {
-    "ko": "\ub7f0\ubd81",
+    "ko": "런북",
     "en": "Runbook"
   },
   "version": "0.0.1",
   "description": {
-    "ko": "\uc7ac\uc0ac\uc6a9 \uac00\ub2a5\ud55c \uc791\uc5c5(\ub7f0\ubd81)\uc744 \uc800\uc7a5\ud558\uace0 \uc2e4\ud589\ud55c\ub2e4. \uc791\uc5c5\uc740 \ud30c\ub77c\ubbf8\ud130\u00b7\ud658\uacbd\ubcc0\uc218\u00b7\uc2dc\ud06c\ub9bf\u00b7\ub2e4\ub978 \uc791\uc5c5 \ucd9c\ub825\uc744 Reference \ub85c \uc5ee\uc73c\uba70, \ub9c1\ud0b9\uc740 \uc21c\uc218 \ud574\uc11d + \uc758\uc874 \uadf8\ub798\ud504 + \uc21c\ud658 \uac80\ucd9c\ub85c \uc548\uc804\ud558\uac8c \ud480\ub9b0\ub2e4.",
+    "ko": "재사용 가능한 작업(런북)을 저장하고 실행한다. 작업은 파라미터·환경변수·시크릿·다른 작업 출력을 Reference 로 엮으며, 링킹은 순수 해석 + 의존 그래프 + 순환 검출로 안전하게 풀린다.",
     "en": "Store and run reusable commands (runbooks). Commands reference parameters, env vars, secrets, and other command outputs; linking resolves safely via pure evaluation, dependency graph, and cycle detection."
   },
   "entry": "main.js",
@@ -28,13 +28,13 @@
       {
         "id": "runbook",
         "title": {
-          "ko": "\ub7f0\ubd81",
+          "ko": "런북",
           "en": "Runbook"
         },
-        "icon": "\ud83d\udcd3",
+        "icon": "📓",
         "placements": [
           "content",
-          "sidebar-right"
+          "rail"
         ],
         "defaultPlacement": "content",
         "status": [],
@@ -56,10 +56,10 @@
       {
         "id": "list",
         "title": {
-          "ko": "\uba85\ub839 \ubaa9\ub85d",
+          "ko": "명령 목록",
           "en": "Commands"
         },
-        "icon": "\u2630",
+        "icon": "☰",
         "placements": [
           "rail"
         ]
@@ -67,10 +67,10 @@
       {
         "id": "editor",
         "title": {
-          "ko": "\uba85\ub839 \ud3b8\uc9d1",
+          "ko": "명령 편집",
           "en": "Editor"
         },
-        "icon": "\u270e",
+        "icon": "✎",
         "placements": [
           "rail"
         ]
@@ -79,278 +79,278 @@
     "nodes": [
       {
         "id": "search-input",
-        "description": "\uba85\ub839 \uac80\uc0c9 \uc785\ub825"
+        "description": "명령 검색 입력"
       },
       {
         "id": "group-select",
-        "description": "\uadf8\ub8f9 \ud544\ud130 \uc120\ud0dd"
+        "description": "그룹 필터 선택"
       },
       {
         "id": "command-add",
-        "description": "\uba85\ub839 \ucd94\uac00 \ubc84\ud2bc"
+        "description": "명령 추가 버튼"
       },
       {
         "id": "command-row",
-        "description": "\uba85\ub839 \ubaa9\ub85d \ud589"
+        "description": "명령 목록 행"
       },
       {
         "id": "run-button",
-        "description": "\uba85\ub839 \uc2e4\ud589 \ubc84\ud2bc"
+        "description": "명령 실행 버튼"
       },
       {
         "id": "command-fav",
-        "description": "\uc990\uaca8\ucc3e\uae30 \ud1a0\uae00 \ubc84\ud2bc"
+        "description": "즐겨찾기 토글 버튼"
       },
       {
         "id": "command-edit",
-        "description": "\uba85\ub839 \ud3b8\uc9d1 \ubc84\ud2bc/\ud3fc"
+        "description": "명령 편집 버튼/폼"
       },
       {
         "id": "command-del",
-        "description": "\uba85\ub839 \uc0ad\uc81c \ubc84\ud2bc"
+        "description": "명령 삭제 버튼"
       },
       {
         "id": "command-form",
-        "description": "\uba85\ub839 \ucd94\uac00 \ud3fc"
+        "description": "명령 추가 폼"
       },
       {
         "id": "form-label",
-        "description": "\ud3fc \ub77c\ubca8 \uc785\ub825"
+        "description": "폼 라벨 입력"
       },
       {
         "id": "form-exec",
-        "description": "\ud3fc \uc2e4\ud589 \ud0c0\uc785 \uc120\ud0dd"
+        "description": "폼 실행 타입 선택"
       },
       {
         "id": "form-save",
-        "description": "\ud3fc \uc800\uc7a5 \ubc84\ud2bc"
+        "description": "폼 저장 버튼"
       },
       {
         "id": "form-cancel",
-        "description": "\ud3fc \ucde8\uc18c \ubc84\ud2bc"
+        "description": "폼 취소 버튼"
       },
       {
         "id": "command-input",
-        "description": "\uc778\ub77c\uc778 \ubc30\uc9c0 \uc785\ub825 \uc5d0\ub514\ud130(contenteditable \ud15c\ud50c\ub9bf)"
+        "description": "인라인 배지 입력 에디터(contenteditable 템플릿)"
       },
       {
         "id": "badge",
-        "description": "\uc6d0\uc790 \ubc30\uc9c0 span(\ud1a0\ud070 type#label)"
+        "description": "원자 배지 span(토큰 type#label)"
       },
       {
         "id": "suggestions",
-        "description": "\uc790\ub3d9\uc644\uc131 \ub4dc\ub86d\ub2e4\uc6b4"
+        "description": "자동완성 드롭다운"
       },
       {
         "id": "suggestion-item",
-        "description": "\uc790\ub3d9\uc644\uc131 \ud6c4\ubcf4 \ud56d\ubaa9"
+        "description": "자동완성 후보 항목"
       },
       {
         "id": "history-row",
-        "description": "\uc2e4\ud589 \uc774\ub825 \ud589(\uc911\uc559 \u2014 \ubaa9\ub85d\uc774 \ub808\uc77c\ub85c \ubc29\ucd9c\ub41c \ub3d9\uc548). data-node=\"history-row/<\ud0a4>\""
+        "description": "실행 이력 행(중앙 — 목록이 레일로 방출된 동안). data-node=\"history-row/<키>\""
       }
     ],
     "commands": [
       {
         "name": "command.add",
         "title": {
-          "ko": "\uba85\ub839 \ucd94\uac00",
+          "ko": "명령 추가",
           "en": "Add Command"
         }
       },
       {
         "name": "command.get",
         "title": {
-          "ko": "\uba85\ub839 \uc870\ud68c",
+          "ko": "명령 조회",
           "en": "Get Command"
         }
       },
       {
         "name": "command.refs",
         "title": {
-          "ko": "\uba85\ub839 Reference \ucd94\ucd9c",
+          "ko": "명령 Reference 추출",
           "en": "Extract Command Refs"
         }
       },
       {
         "name": "command.update",
         "title": {
-          "ko": "\uba85\ub839 \uac31\uc2e0",
+          "ko": "명령 갱신",
           "en": "Update Command"
         }
       },
       {
         "name": "command.delete",
         "title": {
-          "ko": "\uba85\ub839 \uc0ad\uc81c(\uc18c\ud504\ud2b8)",
+          "ko": "명령 삭제(소프트)",
           "en": "Delete Command (soft)"
         }
       },
       {
         "name": "command.restore",
         "title": {
-          "ko": "\uba85\ub839 \ubcf5\uc6d0",
+          "ko": "명령 복원",
           "en": "Restore Command"
         }
       },
       {
         "name": "command.duplicate",
         "title": {
-          "ko": "\uba85\ub839 \ubcf5\uc81c",
+          "ko": "명령 복제",
           "en": "Duplicate Command"
         }
       },
       {
         "name": "command.list",
         "title": {
-          "ko": "\uba85\ub839 \ubaa9\ub85d",
+          "ko": "명령 목록",
           "en": "List Commands"
         }
       },
       {
         "name": "command.search",
         "title": {
-          "ko": "\uba85\ub839 \uac80\uc0c9",
+          "ko": "명령 검색",
           "en": "Search Commands"
         }
       },
       {
         "name": "command.set-group",
         "title": {
-          "ko": "\uba85\ub839 \uadf8\ub8f9 \uc774\ub3d9",
+          "ko": "명령 그룹 이동",
           "en": "Move Command to Group"
         }
       },
       {
         "name": "command.favorite",
         "title": {
-          "ko": "\uba85\ub839 \uc990\uaca8\ucc3e\uae30 \ud1a0\uae00",
+          "ko": "명령 즐겨찾기 토글",
           "en": "Toggle Command Favorite"
         }
       },
       {
         "name": "command.run",
         "title": {
-          "ko": "\uba85\ub839 \uc2e4\ud589(\ub9c1\ud0b9\u00b7\uc178/\ud130\ubbf8\ub110/api)",
-          "en": "Run Command (link\u00b7shell/terminal/api)"
+          "ko": "명령 실행(링킹·셸/터미널/api)",
+          "en": "Run Command (link·shell/terminal/api)"
         }
       },
       {
         "name": "schedule.fire",
         "title": {
-          "ko": "\uc77c\uc815 \ubc1c\ud654(\uc2a4\ucf00\uc904\ub7ec \ud638\ucd9c)",
+          "ko": "일정 발화(스케줄러 호출)",
           "en": "Fire Schedule"
         }
       },
       {
         "name": "group.add",
         "title": {
-          "ko": "\uadf8\ub8f9 \ucd94\uac00",
+          "ko": "그룹 추가",
           "en": "Add Group"
         }
       },
       {
         "name": "group.update",
         "title": {
-          "ko": "\uadf8\ub8f9 \uac31\uc2e0",
+          "ko": "그룹 갱신",
           "en": "Update Group"
         }
       },
       {
         "name": "group.delete",
         "title": {
-          "ko": "\uadf8\ub8f9 \uc0ad\uc81c",
+          "ko": "그룹 삭제",
           "en": "Delete Group"
         }
       },
       {
         "name": "group.list",
         "title": {
-          "ko": "\uadf8\ub8f9 \ubaa9\ub85d",
+          "ko": "그룹 목록",
           "en": "List Groups"
         }
       },
       {
         "name": "history.add",
         "title": {
-          "ko": "\ud788\uc2a4\ud1a0\ub9ac \uae30\ub85d",
+          "ko": "히스토리 기록",
           "en": "Record History"
         }
       },
       {
         "name": "history.list",
         "title": {
-          "ko": "\ud788\uc2a4\ud1a0\ub9ac \ubaa9\ub85d",
+          "ko": "히스토리 목록",
           "en": "List History"
         }
       },
       {
         "name": "history.search",
         "title": {
-          "ko": "\ud788\uc2a4\ud1a0\ub9ac \uac80\uc0c9",
+          "ko": "히스토리 검색",
           "en": "Search History"
         }
       },
       {
         "name": "history.delete",
         "title": {
-          "ko": "\ud788\uc2a4\ud1a0\ub9ac \uc0ad\uc81c(\uc18c\ud504\ud2b8)",
+          "ko": "히스토리 삭제(소프트)",
           "en": "Delete History (soft)"
         }
       },
       {
         "name": "history.restore",
         "title": {
-          "ko": "\ud788\uc2a4\ud1a0\ub9ac \ubcf5\uc6d0",
+          "ko": "히스토리 복원",
           "en": "Restore History"
         }
       },
       {
         "name": "history.clear",
         "title": {
-          "ko": "\ud788\uc2a4\ud1a0\ub9ac \uc804\uccb4 \uc0ad\uc81c",
+          "ko": "히스토리 전체 삭제",
           "en": "Clear History"
         }
       },
       {
         "name": "export",
         "title": {
-          "ko": "\ub7f0\ubd81 \ub0b4\ubcf4\ub0b4\uae30(JSONL)",
+          "ko": "런북 내보내기(JSONL)",
           "en": "Export Runbook (JSONL)"
         }
       },
       {
         "name": "import",
         "title": {
-          "ko": "\ub7f0\ubd81 \uac00\uc838\uc624\uae30(JSONL)",
+          "ko": "런북 가져오기(JSONL)",
           "en": "Import Runbook (JSONL)"
         }
       },
       {
         "name": "ref.parse",
         "title": {
-          "ko": "Reference \ud30c\uc2f1(\uc5d4\uc9c4 \uac80\uc99d)",
+          "ko": "Reference 파싱(엔진 검증)",
           "en": "Parse Reference (engine)"
         }
       },
       {
         "name": "ref.resolve",
         "title": {
-          "ko": "Reference \ud574\uc11d(\uc5d4\uc9c4 \uac80\uc99d)",
+          "ko": "Reference 해석(엔진 검증)",
           "en": "Resolve Reference (engine)"
         }
       },
       {
         "name": "editor.tokens",
         "title": {
-          "ko": "\uc5d0\ub514\ud130 \ud1a0\ud070 \uc5ed\uc9c1\ub82c\ud654(\ud5e4\ub4dc\ub9ac\uc2a4)",
+          "ko": "에디터 토큰 역직렬화(헤드리스)",
           "en": "Editor Deserialize Tokens (headless)"
         }
       },
       {
         "name": "editor.serialize",
         "title": {
-          "ko": "\uc5d0\ub514\ud130 \uc9c1\ub82c\ud654(\ud5e4\ub4dc\ub9ac\uc2a4)",
+          "ko": "에디터 직렬화(헤드리스)",
           "en": "Editor Serialize (headless)"
         }
       }
