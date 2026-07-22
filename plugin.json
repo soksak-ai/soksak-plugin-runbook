@@ -33,8 +33,7 @@
         },
         "icon": "📓",
         "placements": [
-          "content",
-          "rail"
+          "content"
         ],
         "defaultPlacement": "content",
         "status": [],
